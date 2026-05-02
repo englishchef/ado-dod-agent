@@ -1,0 +1,56 @@
+# Python bytecode and cache
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Build and packaging
+build/
+dist/
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.cache/mypy/*
+.cache/mypy/.gitkeep
+.cache/mypy_cache/*
+.cache/mypy_cache/.gitkeep
+.cache/mypy_run2/*
+.cache/mypy_run2/.gitkeep
+.cache/mypy_run3/*
+.cache/mypy_run3/.gitkeep
+.cache/mypy_run4/*
+.cache/mypy_run4/.gitkeep
+.tmp/*
+!.tmp/.gitkeep
+.coverage
+coverage.xml
+htmlcov/
+
+# Environment files
+.env
+.env.local
+
+# IDE/editor
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Project data artifacts
+data/raw/*
+data/normalized/*
+data/evidence/*
+data/output/*
+!data/raw/.gitkeep
+!data/normalized/.gitkeep
+!data/evidence/.gitkeep
+!data/output/.gitkeep

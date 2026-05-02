@@ -1,4 +1,4 @@
-﻿.PHONY: install run test lint format validate-env smoke-ado collect-raw
+﻿.PHONY: install run test lint format validate-env smoke-ado collect-raw normalize-raw
 
 INCLUDE_TESTS ?= true
 INCLUDE_PULL_REQUESTS ?= true
@@ -32,3 +32,6 @@ collect-raw:
 		--include-tests $(INCLUDE_TESTS) \
 		--include-pull-requests $(INCLUDE_PULL_REQUESTS) \
 		--include-artifacts $(INCLUDE_ARTIFACTS)
+
+normalize-raw:
+	python scripts/normalize_raw_metadata.py --build-id $(BUILD_ID)

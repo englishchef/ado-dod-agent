@@ -46,6 +46,11 @@ class LocalJsonStore:
 
         return str(self._base_dir / "raw" / str(build_id) / filename)
 
+    def normalized_path(self, build_id: int, filename: str) -> str:
+        """Return canonical local path for a normalized artifact file."""
+
+        return str(self._base_dir / "normalized" / str(build_id) / filename)
+
     def save_json(self, relative_path: str, payload: Any) -> str:
         """Save payload as UTF-8 pretty JSON and return absolute path string."""
 
@@ -63,4 +68,15 @@ class LocalJsonStore:
 
         target_path = self._base_dir / relative_path
         return json.loads(target_path.read_text(encoding="utf-8"))
+
+    def save_normalized_json(self, build_id: int, filename: str, payload: Any) -> str:
+        """Save normalized payload under `data/normalized/{build_id}`."""
+
+        return self.save_json(f"normalized/{build_id}/{filename}", payload)
+
+    def load_raw_bundle(self, build_id: int) -> dict[str, Any]:
+        """Load raw bundle payload for a build id."""
+
+        payload = self.load_json(f"raw/{build_id}/raw_bundle.json")
+        return payload if isinstance(payload, dict) else {}
 

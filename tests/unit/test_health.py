@@ -30,7 +30,7 @@ def test_runs_generate_placeholder_response() -> None:
     assert response.status_code == 501
     payload = response.json()
     assert payload["status"] == "not_implemented"
-    assert "Phase 2 supports raw metadata collection" in payload["message"]
+    assert "Phase 3 supports raw metadata collection" in payload["message"]
 
 
 def test_smoke_ado_auth_endpoint_returns_ok(monkeypatch: MonkeyPatch) -> None:

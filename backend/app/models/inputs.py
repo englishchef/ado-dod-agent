@@ -46,3 +46,22 @@ class CollectRawInput(GenerateRunInput):
         le=5000,
         description="Max number of test results to fetch per run.",
     )
+
+
+class NormalizeRawInput(BaseModel):
+    """Phase-3 request model for deterministic canonical normalization."""
+
+    build_id: int = Field(description="Azure DevOps build identifier.")
+    raw_bundle_path: str | None = Field(
+        default=None,
+        description="Optional absolute/relative path to a raw bundle JSON file.",
+    )
+    organization: str | None = Field(
+        default=None,
+        description="Optional organization override for metadata.",
+    )
+    project: str | None = Field(
+        default=None,
+        description="Optional project override for metadata.",
+    )
+    mode: str = Field(default="local", description="Execution mode placeholder.")

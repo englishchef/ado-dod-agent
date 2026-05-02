@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from pydantic import BaseModel, Field
 
 from backend.app.models.raw import (
@@ -40,10 +42,38 @@ class SmokeAuthResponse(BaseModel):
     project: str = Field(description="Target Azure DevOps project.")
 
 
+class NormalizeRawResponse(BaseModel):
+    """Response model for canonical normalization endpoint."""
+
+    status: str = Field(description="Normalization status.")
+    message: str = Field(description="Human-readable summary.")
+    build_id: int = Field(description="Build id for normalized output.")
+    pipeline_name: str | None = Field(default=None)
+    source_branch: str | None = Field(default=None)
+    source_version: str | None = Field(default=None)
+    work_item_count: int = Field(default=0)
+    commit_count: int = Field(default=0)
+    pull_request_count: int = Field(default=0)
+    stage_count: int = Field(default=0)
+    job_count: int = Field(default=0)
+    task_count: int = Field(default=0)
+    artifact_count: int = Field(default=0)
+    test_run_count: int = Field(default=0)
+    failed_test_count: int = Field(default=0)
+    risk_flags: list[str] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)
+    canonical_path: str = Field(description="Path to canonical JSON artifact.")
+    details: dict[str, Any] | None = Field(
+        default=None,
+        description="Optional extension map for future phases.",
+    )
+
+
 __all__ = [
     "HealthResponse",
     "RunGenerationResponse",
     "SmokeAuthResponse",
+    "NormalizeRawResponse",
     "RawCollectionResult",
     "RawCollectionSummary",
     "RawArtifactPaths",

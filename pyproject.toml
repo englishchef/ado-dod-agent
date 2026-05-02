@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 name = "ado-dod-agent"
 version = "0.1.0"
 description = "Phase-2 foundation for Azure DevOps raw metadata collection and service integration scaffolding."
-readme = "README.md"
+readme = "docs/README.md"
 requires-python = ">=3.12,<3.13"
 dependencies = [
   "fastapi>=0.115,<1.0",

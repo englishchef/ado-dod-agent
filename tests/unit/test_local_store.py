@@ -38,3 +38,26 @@ def test_local_store_ensure_dirs_and_raw_path(tmp_path: Path) -> None:
     assert "raw" in expected_path
     assert "42" in expected_path
 
+
+def test_local_store_normalized_helpers(tmp_path: Path) -> None:
+    """Store should support normalized output helpers."""
+
+    store = LocalJsonStore(Settings(DATA_DIR=tmp_path))
+    normalized_path = store.normalized_path(9, "canonical.json")
+    written = store.save_normalized_json(9, "canonical.json", {"build_id": 9})
+    loaded = store.load_json("normalized/9/canonical.json")
+
+    assert "normalized" in normalized_path
+    assert written.endswith("canonical.json")
+    assert loaded["build_id"] == 9
+
+
+def test_local_store_load_raw_bundle(tmp_path: Path) -> None:
+    """Store should load raw bundle by build id helper."""
+
+    store = LocalJsonStore(Settings(DATA_DIR=tmp_path))
+    store.save_json("raw/501/raw_bundle.json", {"build_id": 501, "raw": {}})
+
+    payload = store.load_raw_bundle(501)
+    assert payload["build_id"] == 501
+

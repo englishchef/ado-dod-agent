@@ -2,11 +2,25 @@
 
 from __future__ import annotations
 
+import json
+from pathlib import Path
+from typing import Any
+
 from fastapi import APIRouter, HTTPException, status
 
-from backend.app.models.inputs import CollectRawInput, GenerateRunInput
-from backend.app.models.outputs import RawCollectionResult, RunGenerationResponse
+from backend.app.models.inputs import CollectRawInput, GenerateRunInput, NormalizeRawInput
+from backend.app.models.outputs import (
+    NormalizeRawResponse,
+    RawCollectionResult,
+    RunGenerationResponse,
+)
 from backend.app.services.collectors.raw_metadata import collect_raw_metadata
+from backend.app.services.normalizers.canonical import (
+    build_canonical_summary,
+    normalize_raw_bundle,
+)
+from backend.app.services.storage.local_store import LocalJsonStore
+from backend.app.utils.config import get_settings
 
 router = APIRouter()
 
@@ -22,8 +36,9 @@ async def generate_run(_: GenerateRunInput) -> RunGenerationResponse:
     return RunGenerationResponse(
         status="not_implemented",
         message=(
-            "Phase 2 supports raw metadata collection via /api/v1/runs/collect-raw and "
-            "scripts/collect_raw_metadata.py; full generation workflow is not implemented yet."
+            "Phase 3 supports raw metadata collection (/api/v1/runs/collect-raw) and "
+            "deterministic normalization (/api/v1/runs/normalize); full generation workflow "
+            "is not implemented yet."
         ),
     )
 
@@ -44,3 +59,46 @@ async def collect_raw(request: CollectRawInput) -> RawCollectionResult:
             },
         )
     return result
+
+
+@router.post("/normalize", response_model=NormalizeRawResponse)
+async def normalize_raw(request: NormalizeRawInput) -> NormalizeRawResponse:
+    """Normalize previously collected raw metadata into canonical structure."""
+
+    settings = get_settings()
+    store = LocalJsonStore(settings)
+
+    source_path: str | None = request.raw_bundle_path
+    try:
+        if request.raw_bundle_path:
+            payload_text = Path(request.raw_bundle_path).read_text(encoding="utf-8")
+            raw_bundle: dict[str, Any] = json.loads(payload_text)
+        else:
+            raw_bundle = store.load_raw_bundle(request.build_id)
+            source_path = store.raw_path(request.build_id, "raw_bundle.json")
+    except FileNotFoundError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Raw bundle not found for build_id={request.build_id}.",
+        ) from exc
+    except json.JSONDecodeError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Raw bundle is not valid JSON for build_id={request.build_id}.",
+        ) from exc
+
+    raw_bundle["build_id"] = request.build_id
+    if request.organization:
+        raw_bundle["organization"] = request.organization
+    if request.project:
+        raw_bundle["project"] = request.project
+
+    document = normalize_raw_bundle(raw_bundle=raw_bundle, source_path=source_path)
+    canonical_path = store.save_normalized_json(
+        build_id=request.build_id,
+        filename="canonical.json",
+        payload=document.model_dump(mode="json"),
+    )
+
+    summary = build_canonical_summary(document, canonical_path)
+    return NormalizeRawResponse.model_validate(summary)

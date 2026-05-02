@@ -6,7 +6,8 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /workspace
 
-COPY pyproject.toml README.md /workspace/
+COPY pyproject.toml /workspace/
+COPY docs/README.md /workspace/docs/README.md
 COPY backend /workspace/backend
 COPY scripts /workspace/scripts
 COPY tests /workspace/tests

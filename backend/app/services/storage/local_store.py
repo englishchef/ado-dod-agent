@@ -51,6 +51,11 @@ class LocalJsonStore:
 
         return str(self._base_dir / "normalized" / str(build_id) / filename)
 
+    def evidence_path(self, build_id: int, filename: str) -> str:
+        """Return canonical local path for an evidence artifact file."""
+
+        return str(self._base_dir / "evidence" / str(build_id) / filename)
+
     def save_json(self, relative_path: str, payload: Any) -> str:
         """Save payload as UTF-8 pretty JSON and return absolute path string."""
 
@@ -74,9 +79,20 @@ class LocalJsonStore:
 
         return self.save_json(f"normalized/{build_id}/{filename}", payload)
 
+    def save_evidence_json(self, build_id: int, filename: str, payload: Any) -> str:
+        """Save evidence payload under `data/evidence/{build_id}`."""
+
+        return self.save_json(f"evidence/{build_id}/{filename}", payload)
+
     def load_raw_bundle(self, build_id: int) -> dict[str, Any]:
         """Load raw bundle payload for a build id."""
 
         payload = self.load_json(f"raw/{build_id}/raw_bundle.json")
+        return payload if isinstance(payload, dict) else {}
+
+    def load_canonical(self, build_id: int) -> dict[str, Any]:
+        """Load canonical payload for a build id."""
+
+        payload = self.load_json(f"normalized/{build_id}/canonical.json")
         return payload if isinstance(payload, dict) else {}
 

@@ -65,3 +65,20 @@ class NormalizeRawInput(BaseModel):
         description="Optional project override for metadata.",
     )
     mode: str = Field(default="local", description="Execution mode placeholder.")
+
+
+class BuildEvidenceInput(BaseModel):
+    """Phase-4 request model for deterministic evidence bucket generation."""
+
+    build_id: int = Field(description="Azure DevOps build identifier.")
+    canonical_path: str | None = Field(
+        default=None,
+        description="Optional absolute/relative path to a canonical JSON file.",
+    )
+    max_items_per_section: int = Field(
+        default=10,
+        ge=1,
+        le=100,
+        description="Maximum evidence entries retained per section.",
+    )
+    mode: str = Field(default="local", description="Execution mode placeholder.")

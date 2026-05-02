@@ -7,14 +7,23 @@ from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, status
+from pydantic import ValidationError
 
-from backend.app.models.inputs import CollectRawInput, GenerateRunInput, NormalizeRawInput
+from backend.app.models.canonical import CanonicalDodDocument
+from backend.app.models.inputs import (
+    BuildEvidenceInput,
+    CollectRawInput,
+    GenerateRunInput,
+    NormalizeRawInput,
+)
 from backend.app.models.outputs import (
+    BuildEvidenceResponse,
     NormalizeRawResponse,
     RawCollectionResult,
     RunGenerationResponse,
 )
 from backend.app.services.collectors.raw_metadata import collect_raw_metadata
+from backend.app.services.evidence.builder import build_evidence_bundle, build_evidence_summary
 from backend.app.services.normalizers.canonical import (
     build_canonical_summary,
     normalize_raw_bundle,
@@ -36,9 +45,10 @@ async def generate_run(_: GenerateRunInput) -> RunGenerationResponse:
     return RunGenerationResponse(
         status="not_implemented",
         message=(
-            "Phase 3 supports raw metadata collection (/api/v1/runs/collect-raw) and "
-            "deterministic normalization (/api/v1/runs/normalize); full generation workflow "
-            "is not implemented yet."
+            "Phase 4 supports raw metadata collection (/api/v1/runs/collect-raw), "
+            "deterministic normalization (/api/v1/runs/normalize), and deterministic "
+            "evidence bucket generation (/api/v1/runs/build-evidence); full generation "
+            "workflow is not implemented yet."
         ),
     )
 
@@ -102,3 +112,75 @@ async def normalize_raw(request: NormalizeRawInput) -> NormalizeRawResponse:
 
     summary = build_canonical_summary(document, canonical_path)
     return NormalizeRawResponse.model_validate(summary)
+
+
+@router.post("/build-evidence", response_model=BuildEvidenceResponse)
+async def build_evidence(request: BuildEvidenceInput) -> BuildEvidenceResponse:
+    """Build deterministic evidence buckets from canonical normalized metadata."""
+
+    settings = get_settings()
+    store = LocalJsonStore(settings)
+
+    source_path: str | None = request.canonical_path
+    try:
+        if request.canonical_path:
+            payload_text = Path(request.canonical_path).read_text(encoding="utf-8")
+            canonical_payload: dict[str, Any] = json.loads(payload_text)
+        else:
+            canonical_payload = store.load_canonical(request.build_id)
+            source_path = store.normalized_path(request.build_id, "canonical.json")
+    except FileNotFoundError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Canonical document not found for build_id={request.build_id}.",
+        ) from exc
+    except json.JSONDecodeError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Canonical document is not valid JSON for build_id={request.build_id}.",
+        ) from exc
+
+    canonical_payload["build_id"] = request.build_id
+    try:
+        canonical_document = CanonicalDodDocument.model_validate(canonical_payload)
+    except ValidationError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Canonical document has invalid schema for build_id={request.build_id}.",
+        ) from exc
+    evidence_bundle = build_evidence_bundle(
+        canonical=canonical_document,
+        source_path=source_path,
+        max_items_per_section=request.max_items_per_section,
+    )
+
+    bucket_1_path = store.save_evidence_json(
+        build_id=request.build_id,
+        filename="bucket_1_change_intent.json",
+        payload=evidence_bundle.bucket_1.model_dump(mode="json"),
+    )
+    bucket_2_path = store.save_evidence_json(
+        build_id=request.build_id,
+        filename="bucket_2_execution_validation.json",
+        payload=evidence_bundle.bucket_2.model_dump(mode="json"),
+    )
+    bucket_3_path = store.save_evidence_json(
+        build_id=request.build_id,
+        filename="bucket_3_rollback_risk.json",
+        payload=evidence_bundle.bucket_3.model_dump(mode="json"),
+    )
+    bundle_path = store.save_evidence_json(
+        build_id=request.build_id,
+        filename="evidence_bundle.json",
+        payload=evidence_bundle.model_dump(mode="json"),
+    )
+    summary = build_evidence_summary(
+        bundle=evidence_bundle,
+        bucket_paths={
+            "bucket_1_change_intent_path": bucket_1_path,
+            "bucket_2_execution_validation_path": bucket_2_path,
+            "bucket_3_rollback_risk_path": bucket_3_path,
+            "evidence_bundle_path": bundle_path,
+        },
+    )
+    return BuildEvidenceResponse.model_validate(summary)

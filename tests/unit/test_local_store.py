@@ -61,3 +61,26 @@ def test_local_store_load_raw_bundle(tmp_path: Path) -> None:
     payload = store.load_raw_bundle(501)
     assert payload["build_id"] == 501
 
+
+def test_local_store_evidence_helpers(tmp_path: Path) -> None:
+    """Store should support evidence output helper paths."""
+
+    store = LocalJsonStore(Settings(DATA_DIR=tmp_path))
+    evidence_path = store.evidence_path(22, "evidence_bundle.json")
+    written = store.save_evidence_json(22, "evidence_bundle.json", {"build_id": 22})
+    loaded = store.load_json("evidence/22/evidence_bundle.json")
+
+    assert "evidence" in evidence_path
+    assert written.endswith("evidence_bundle.json")
+    assert loaded["build_id"] == 22
+
+
+def test_local_store_load_canonical(tmp_path: Path) -> None:
+    """Store should load canonical payload by build id helper."""
+
+    store = LocalJsonStore(Settings(DATA_DIR=tmp_path))
+    store.save_json("normalized/700/canonical.json", {"build_id": 700})
+
+    payload = store.load_canonical(700)
+    assert payload["build_id"] == 700
+

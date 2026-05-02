@@ -69,11 +69,27 @@ class NormalizeRawResponse(BaseModel):
     )
 
 
+class BuildEvidenceResponse(BaseModel):
+    """Response model for deterministic evidence bucket generation endpoint."""
+
+    status: str = Field(description="Evidence generation status.")
+    message: str = Field(description="Human-readable summary.")
+    build_id: int = Field(description="Build id for evidence output.")
+    pipeline_name: str | None = Field(default=None)
+    bucket_1_counts: dict[str, int] = Field(default_factory=dict)
+    bucket_2_counts: dict[str, int] = Field(default_factory=dict)
+    bucket_3_counts: dict[str, int] = Field(default_factory=dict)
+    evidence_gap_counts: dict[str, int] = Field(default_factory=dict)
+    truncation_applied: bool = Field(default=False)
+    output_paths: dict[str, str] = Field(default_factory=dict)
+
+
 __all__ = [
     "HealthResponse",
     "RunGenerationResponse",
     "SmokeAuthResponse",
     "NormalizeRawResponse",
+    "BuildEvidenceResponse",
     "RawCollectionResult",
     "RawCollectionSummary",
     "RawArtifactPaths",

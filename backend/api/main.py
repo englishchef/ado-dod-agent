@@ -45,7 +45,10 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
 app = FastAPI(
     title=SERVICE_NAME,
     version="0.1.0",
-    description="Phase 2 foundation for ADO auth, smoke validation, and raw metadata collection.",
+    description=(
+        "Phase 4 foundation for ADO auth, raw collection, canonical normalization, "
+        "and deterministic evidence bucket generation."
+    ),
     lifespan=lifespan,
 )
 

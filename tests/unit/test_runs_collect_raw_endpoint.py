@@ -1,12 +1,12 @@
-"""Tests for collect-raw API endpoint behavior."""
+﻿"""Tests for collect-raw API endpoint behavior."""
 
 from __future__ import annotations
 
 from datetime import UTC, datetime
 from typing import Any, cast
 
-from app.api.main import app
-from app.models.raw import (
+from backend.api.main import app
+from backend.app.models.raw import (
     CollectionStatus,
     CollectorStatus,
     RawArtifactPaths,
@@ -33,7 +33,7 @@ def _result(status: str) -> RawCollectionResult:
 def test_collect_raw_endpoint_returns_result(monkeypatch: MonkeyPatch) -> None:
     """Endpoint should return collection result for completed/partial runs."""
 
-    from app.api.routes import runs as runs_route
+    from backend.app.routers import dod_runs as runs_route
 
     async def fake_collect_raw_metadata(_: Any) -> RawCollectionResult:
         return _result("partial")
@@ -57,7 +57,7 @@ def test_collect_raw_endpoint_returns_result(monkeypatch: MonkeyPatch) -> None:
 def test_collect_raw_endpoint_maps_failed_to_502(monkeypatch: MonkeyPatch) -> None:
     """Endpoint should return 502 when mandatory build retrieval failed."""
 
-    from app.api.routes import runs as runs_route
+    from backend.app.routers import dod_runs as runs_route
 
     async def fake_collect_raw_metadata(_: Any) -> RawCollectionResult:
         return _result("failed")
@@ -75,3 +75,4 @@ def test_collect_raw_endpoint_maps_failed_to_502(monkeypatch: MonkeyPatch) -> No
         },
     )
     assert response.status_code == 502
+

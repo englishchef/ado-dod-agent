@@ -1,4 +1,4 @@
-"""Shared Azure DevOps REST client foundation."""
+﻿"""Shared Azure DevOps REST client foundation."""
 
 from __future__ import annotations
 
@@ -8,10 +8,9 @@ from dataclasses import dataclass
 from typing import Any
 
 import httpx
-
-from app.auth.ado_token_provider import AdoTokenProvider
-from app.core.config import Settings
-from app.core.logging import get_logger
+from backend.app.services.auth.ado_token_provider import AdoTokenProvider
+from backend.app.utils.config import Settings
+from backend.app.utils.logging import get_logger
 
 logger = get_logger(__name__)
 
@@ -205,3 +204,4 @@ class AzureDevOpsBaseClient:
 
         if self._owns_http_client:
             await self._http_client.aclose()
+

@@ -1,4 +1,4 @@
-# Python bytecode and cache
+﻿# Python bytecode and cache
 __pycache__/
 *.py[cod]
 *$py.class
@@ -46,11 +46,15 @@ htmlcov/
 Thumbs.db
 
 # Project data artifacts
-data/raw/*
-data/normalized/*
-data/evidence/*
-data/output/*
+data/raw/
+data/normalized/
+data/evidence/
+data/output/
 !data/raw/.gitkeep
 !data/normalized/.gitkeep
 !data/evidence/.gitkeep
 !data/output/.gitkeep
+
+.cache/mypy_backend/*
+.cache/mypy_backend/.gitkeep
+

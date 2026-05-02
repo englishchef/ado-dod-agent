@@ -1,4 +1,4 @@
-"""Tests for Azure DevOps base client behavior."""
+﻿"""Tests for Azure DevOps base client behavior."""
 
 from __future__ import annotations
 
@@ -8,7 +8,7 @@ from typing import Any
 
 import httpx
 import pytest
-from app.clients.ado.base import (
+from backend.app.services.ado.base import (
     AzureDevOpsBaseClient,
     AzureDevOpsClientConfig,
     AzureDevOpsClientError,
@@ -126,3 +126,4 @@ def test_base_client_post_adds_api_version_and_sends_json_body() -> None:
     assert captured["path"].endswith("/_apis/wit/workitemsbatch")
     assert captured["params"]["api-version"] == "7.1"
     assert json.loads(captured["body"]) == {"ids": [1, 2]}
+

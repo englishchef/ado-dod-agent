@@ -1,4 +1,4 @@
-"""Tests for Azure DevOps token provider."""
+﻿"""Tests for Azure DevOps token provider."""
 
 from __future__ import annotations
 
@@ -6,10 +6,10 @@ import asyncio
 import time
 from typing import Any
 
-from app.auth.ado_token_provider import AzureDevOpsTokenProvider
-from app.core.config import Settings
-from app.core.constants import ADO_RESOURCE_SCOPE
 from azure.core.credentials import AccessToken
+from backend.app.services.auth.ado_token_provider import AzureDevOpsTokenProvider
+from backend.app.utils.config import Settings
+from backend.app.utils.constants import ADO_RESOURCE_SCOPE
 
 
 class DummyCredential:
@@ -56,3 +56,4 @@ def test_token_provider_returns_async_header_shape() -> None:
 
     assert headers["Authorization"] == "Bearer mock-token"
     assert headers["Accept"] == "application/json"
+

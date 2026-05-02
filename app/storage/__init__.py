@@ -1,5 +1,6 @@
-"""Storage package."""
+﻿"""Storage package."""
 
-from app.storage.local_store import LocalJsonStore
+from backend.app.services.storage.local_store import LocalJsonStore
 
 __all__ = ["LocalJsonStore"]
+

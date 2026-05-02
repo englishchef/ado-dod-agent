@@ -1,4 +1,4 @@
-"""Azure DevOps token provider implementations."""
+﻿"""Azure DevOps token provider implementations."""
 
 from __future__ import annotations
 
@@ -6,11 +6,10 @@ import asyncio
 from typing import Protocol
 
 from azure.core.credentials import TokenCredential
-
-from app.auth.credentials import get_azure_credential
-from app.core.config import Settings, get_settings
-from app.core.constants import ADO_RESOURCE_SCOPE
-from app.core.logging import get_logger
+from backend.app.services.auth.credentials import get_azure_credential
+from backend.app.utils.config import Settings, get_settings
+from backend.app.utils.constants import ADO_RESOURCE_SCOPE
+from backend.app.utils.logging import get_logger
 
 logger = get_logger(__name__)
 
@@ -63,3 +62,4 @@ class AzureIdentityAdoTokenProvider(AzureDevOpsTokenProvider):
     """Backward-compatible alias for historical class naming."""
 
     pass
+

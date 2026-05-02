@@ -1,4 +1,4 @@
-"""CLI entrypoint for Phase-2 raw metadata collection."""
+﻿"""CLI entrypoint for Phase-2 raw metadata collection."""
 
 from __future__ import annotations
 
@@ -6,10 +6,25 @@ import argparse
 import asyncio
 from typing import Any
 
-from app.collectors.raw_metadata import collect_raw_metadata
-from app.core.config import get_settings
-from app.models.inputs import CollectRawInput
 from pydantic import ValidationError
+
+try:
+    from backend.app.models.inputs import CollectRawInput
+    from backend.app.services.collectors.raw_metadata import collect_raw_metadata
+    from backend.app.utils.config import get_settings
+except ModuleNotFoundError as exc:
+    if exc.name != "backend":
+        raise
+    import sys
+    from pathlib import Path
+
+    repo_root = Path(__file__).resolve().parents[1]
+    if str(repo_root) not in sys.path:
+        sys.path.insert(0, str(repo_root))
+
+    from backend.app.models.inputs import CollectRawInput
+    from backend.app.services.collectors.raw_metadata import collect_raw_metadata
+    from backend.app.utils.config import get_settings
 
 
 def _parse_bool(value: str) -> bool:

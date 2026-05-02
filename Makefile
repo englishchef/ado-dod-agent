@@ -1,4 +1,4 @@
-.PHONY: install run test lint format validate-env smoke-ado collect-raw
+﻿.PHONY: install run test lint format validate-env smoke-ado collect-raw
 
 INCLUDE_TESTS ?= true
 INCLUDE_PULL_REQUESTS ?= true
@@ -9,14 +9,14 @@ install:
 	python -m pip install -e ".[dev]"
 
 run:
-	uvicorn app.api.main:app --host 0.0.0.0 --port 8000 --reload
+	uvicorn backend.api.main:app --host 0.0.0.0 --port 8000 --reload
 
 test:
 	pytest
 
 lint:
 	ruff check .
-	mypy --no-incremental --cache-dir .cache/mypy_run4 app scripts
+	mypy --no-incremental --cache-dir .cache/mypy_backend backend scripts tests
 
 format:
 	ruff format .

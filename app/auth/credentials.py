@@ -1,12 +1,11 @@
-"""Credential factory abstractions for Azure authentication."""
+﻿"""Credential factory abstractions for Azure authentication."""
 
 from __future__ import annotations
 
 from azure.core.credentials import TokenCredential
 from azure.identity import DefaultAzureCredential
-
-from app.core.config import Settings, get_settings
-from app.core.logging import get_logger
+from backend.app.utils.config import Settings, get_settings
+from backend.app.utils.logging import get_logger
 
 logger = get_logger(__name__)
 
@@ -36,3 +35,4 @@ def build_azure_credential(settings: Settings | None = None) -> TokenCredential:
     """Backward-compatible alias for `get_azure_credential`."""
 
     return get_azure_credential(settings)
+

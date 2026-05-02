@@ -1,4 +1,4 @@
-"""Tests for Phase-2 raw metadata coordinator behavior."""
+﻿"""Tests for Phase-2 raw metadata coordinator behavior."""
 
 from __future__ import annotations
 
@@ -6,10 +6,10 @@ import asyncio
 from pathlib import Path
 from typing import Any
 
-from app.collectors import raw_metadata
-from app.core.config import Settings
-from app.models.inputs import CollectRawInput
-from app.models.raw import CollectorError, CollectorStatus
+from backend.app.models.inputs import CollectRawInput
+from backend.app.models.raw import CollectorError, CollectorStatus
+from backend.app.services.collectors import raw_metadata
+from backend.app.utils.config import Settings
 from pytest import MonkeyPatch
 
 
@@ -221,3 +221,4 @@ def test_collect_raw_metadata_writes_expected_artifact_paths(
     assert result.artifact_paths.work_item_refs is not None
     assert result.artifact_paths.changes is not None
     assert result.artifact_paths.raw_bundle is not None
+

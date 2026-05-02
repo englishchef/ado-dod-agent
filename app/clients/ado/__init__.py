@@ -1,14 +1,14 @@
-"""Azure DevOps HTTP client components."""
+﻿"""Azure DevOps HTTP client components."""
 
-from app.clients.ado.base import (
+from backend.app.services.ado.base import (
     AzureDevOpsBaseClient,
     AzureDevOpsClientConfig,
     AzureDevOpsClientError,
 )
-from app.clients.ado.build_client import AzureDevOpsBuildClient
-from app.clients.ado.git_client import AzureDevOpsGitClient
-from app.clients.ado.test_client import AzureDevOpsTestClient
-from app.clients.ado.workitem_client import AzureDevOpsWorkItemClient
+from backend.app.services.ado.build_client import AzureDevOpsBuildClient
+from backend.app.services.ado.git_client import AzureDevOpsGitClient
+from backend.app.services.ado.test_client import AzureDevOpsTestClient
+from backend.app.services.ado.workitem_client import AzureDevOpsWorkItemClient
 
 __all__ = [
     "AzureDevOpsBaseClient",
@@ -19,3 +19,4 @@ __all__ = [
     "AzureDevOpsGitClient",
     "AzureDevOpsTestClient",
 ]
+

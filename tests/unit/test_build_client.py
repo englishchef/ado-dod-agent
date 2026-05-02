@@ -1,12 +1,12 @@
-"""Tests for Azure DevOps build client endpoints."""
+﻿"""Tests for Azure DevOps build client endpoints."""
 
 from __future__ import annotations
 
 import asyncio
 
 import httpx
-from app.clients.ado.base import AzureDevOpsClientConfig
-from app.clients.ado.build_client import AzureDevOpsBuildClient
+from backend.app.services.ado.base import AzureDevOpsClientConfig
+from backend.app.services.ado.build_client import AzureDevOpsBuildClient
 
 
 class StubTokenProvider:
@@ -85,3 +85,4 @@ def test_build_client_changes_and_artifacts_paths() -> None:
 
     assert requested_paths[0].endswith("/_apis/build/builds/42/changes")
     assert requested_paths[1].endswith("/_apis/build/builds/42/artifacts")
+

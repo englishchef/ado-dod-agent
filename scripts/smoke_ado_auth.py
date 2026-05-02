@@ -1,4 +1,4 @@
-"""Smoke test Azure DevOps Entra auth and basic build API access."""
+﻿"""Smoke test Azure DevOps Entra auth and basic build API access."""
 
 from __future__ import annotations
 
@@ -6,12 +6,29 @@ import argparse
 import asyncio
 from typing import Any
 
-from app.auth.ado_token_provider import AzureDevOpsTokenProvider
-from app.auth.credentials import get_azure_credential
-from app.clients.ado.base import AzureDevOpsClientConfig, AzureDevOpsClientError
-from app.clients.ado.build_client import AzureDevOpsBuildClient
-from app.core.config import get_settings
-from app.core.logging import configure_logging
+try:
+    from backend.app.services.ado.base import AzureDevOpsClientConfig, AzureDevOpsClientError
+    from backend.app.services.ado.build_client import AzureDevOpsBuildClient
+    from backend.app.services.auth.ado_token_provider import AzureDevOpsTokenProvider
+    from backend.app.services.auth.credentials import get_azure_credential
+    from backend.app.utils.config import get_settings
+    from backend.app.utils.logging import configure_logging
+except ModuleNotFoundError as exc:
+    if exc.name != "backend":
+        raise
+    import sys
+    from pathlib import Path
+
+    repo_root = Path(__file__).resolve().parents[1]
+    if str(repo_root) not in sys.path:
+        sys.path.insert(0, str(repo_root))
+
+    from backend.app.services.ado.base import AzureDevOpsClientConfig, AzureDevOpsClientError
+    from backend.app.services.ado.build_client import AzureDevOpsBuildClient
+    from backend.app.services.auth.ado_token_provider import AzureDevOpsTokenProvider
+    from backend.app.services.auth.credentials import get_azure_credential
+    from backend.app.utils.config import get_settings
+    from backend.app.utils.logging import configure_logging
 
 
 def build_safe_summary(

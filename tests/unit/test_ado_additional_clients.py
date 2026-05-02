@@ -1,4 +1,4 @@
-"""Tests for additional ADO clients introduced in Phase 2."""
+﻿"""Tests for additional ADO clients introduced in Phase 2."""
 
 from __future__ import annotations
 
@@ -7,10 +7,10 @@ import json
 from typing import Any
 
 import httpx
-from app.clients.ado.base import AzureDevOpsClientConfig
-from app.clients.ado.git_client import AzureDevOpsGitClient
-from app.clients.ado.test_client import AzureDevOpsTestClient
-from app.clients.ado.workitem_client import AzureDevOpsWorkItemClient
+from backend.app.services.ado.base import AzureDevOpsClientConfig
+from backend.app.services.ado.git_client import AzureDevOpsGitClient
+from backend.app.services.ado.test_client import AzureDevOpsTestClient
+from backend.app.services.ado.workitem_client import AzureDevOpsWorkItemClient
 
 
 class StubTokenProvider:
@@ -92,3 +92,4 @@ def test_test_client_paths() -> None:
     asyncio.run(run())
     assert paths[0].endswith("/_apis/test/runs")
     assert paths[1].endswith("/_apis/test/Runs/7/results")
+

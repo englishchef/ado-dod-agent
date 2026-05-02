@@ -1,12 +1,12 @@
-"""Tests for local JSON storage abstraction."""
+﻿"""Tests for local JSON storage abstraction."""
 
 from __future__ import annotations
 
 from datetime import UTC, datetime
 from pathlib import Path
 
-from app.core.config import Settings
-from app.storage.local_store import LocalJsonStore
+from backend.app.services.storage.local_store import LocalJsonStore
+from backend.app.utils.config import Settings
 
 
 def test_local_store_save_and_load_json(tmp_path: Path) -> None:
@@ -37,3 +37,4 @@ def test_local_store_ensure_dirs_and_raw_path(tmp_path: Path) -> None:
     assert run_dir.exists()
     assert "raw" in expected_path
     assert "42" in expected_path
+

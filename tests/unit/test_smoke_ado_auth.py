@@ -1,11 +1,11 @@
-"""Tests for smoke script helpers."""
+﻿"""Tests for smoke script helpers."""
 
 from __future__ import annotations
 
 import asyncio
 from typing import Any
 
-from app.core.config import Settings
+from backend.app.utils.config import Settings
 from pytest import MonkeyPatch
 from scripts import smoke_ado_auth
 
@@ -78,3 +78,4 @@ def test_run_smoke_with_mocked_client(monkeypatch: MonkeyPatch) -> None:
     assert summary["pipeline_name"] == "Pipeline"
     assert summary["timeline_record_count"] == 2
     assert summary["linked_work_item_ref_count"] == 1
+

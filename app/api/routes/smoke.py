@@ -1,16 +1,15 @@
-"""Smoke validation endpoints."""
+﻿"""Smoke validation endpoints."""
 
 from __future__ import annotations
 
 from typing import Annotated
 
+from backend.app.models.outputs import SmokeAuthResponse
+from backend.app.services.auth.ado_token_provider import AzureDevOpsTokenProvider
+from backend.app.utils.config import Settings, get_settings
+from backend.app.utils.constants import API_V1_PREFIX
+from backend.app.utils.logging import get_logger
 from fastapi import APIRouter, Depends, HTTPException, status
-
-from app.auth.ado_token_provider import AzureDevOpsTokenProvider
-from app.core.config import Settings, get_settings
-from app.core.constants import API_V1_PREFIX
-from app.core.logging import get_logger
-from app.models.outputs import SmokeAuthResponse
 
 logger = get_logger(__name__)
 
@@ -54,3 +53,4 @@ async def smoke_ado_auth(
         organization=settings.ADO_ORGANIZATION,
         project=settings.ADO_PROJECT,
     )
+

@@ -1,9 +1,9 @@
-"""Tests for Azure credential factory."""
+﻿"""Tests for Azure credential factory."""
 
 from __future__ import annotations
 
-from app.auth import credentials as credentials_module
-from app.core.config import Settings
+from backend.app.services.auth import credentials as credentials_module
+from backend.app.utils.config import Settings
 from pytest import MonkeyPatch
 
 
@@ -29,3 +29,4 @@ def test_get_azure_credential_initializes_default_credential(
     assert isinstance(credential, DummyCredential)
     assert captured_kwargs["managed_identity_client_id"] == "managed-identity-client-id"
     assert captured_kwargs["exclude_interactive_browser_credential"] is False
+

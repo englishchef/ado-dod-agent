@@ -1,8 +1,8 @@
-"""Validate Phase-0 environment configuration safely."""
+﻿"""Validate Phase-0 environment configuration safely."""
 
 from __future__ import annotations
 
-from app.core.config import get_settings
+from backend.app.utils.config import get_settings
 
 
 def _is_present(value: str | None) -> bool:
@@ -48,3 +48,4 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
+

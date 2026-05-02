@@ -1,16 +1,15 @@
-"""Output schemas returned by API endpoints."""
+﻿"""Output schemas returned by API endpoints."""
 
 from __future__ import annotations
 
-from pydantic import BaseModel, Field
-
-from app.models.raw import (
+from backend.app.models.raw import (
     CollectorError,
     CollectorStatus,
     RawArtifactPaths,
     RawCollectionResult,
     RawCollectionSummary,
 )
+from pydantic import BaseModel, Field
 
 
 class HealthResponse(BaseModel):
@@ -50,3 +49,4 @@ __all__ = [
     "CollectorStatus",
     "CollectorError",
 ]
+

@@ -1,7 +1,7 @@
-"""Health endpoint tests."""
+﻿"""Health endpoint tests."""
 
-from app.api.main import app
-from app.core.config import Settings, get_settings
+from backend.api.main import app
+from backend.app.utils.config import Settings, get_settings
 from fastapi.testclient import TestClient
 from pytest import MonkeyPatch
 
@@ -36,7 +36,7 @@ def test_runs_generate_placeholder_response() -> None:
 def test_smoke_ado_auth_endpoint_returns_ok(monkeypatch: MonkeyPatch) -> None:
     """Smoke auth endpoint should support mocked auth ping without live Azure calls."""
 
-    from app.api.routes import smoke as smoke_route
+    from backend.app.routers import smoke as smoke_route
 
     class DummyTokenProvider:
         def __init__(self, settings: Settings) -> None:
@@ -62,3 +62,4 @@ def test_smoke_ado_auth_endpoint_returns_ok(monkeypatch: MonkeyPatch) -> None:
     assert payload["authentication_succeeded"] is True
     assert payload["organization"] == "org"
     assert payload["project"] == "project"
+

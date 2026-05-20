@@ -56,6 +56,11 @@ class LocalJsonStore:
 
         return str(self._base_dir / "evidence" / str(build_id) / filename)
 
+    def output_path(self, build_id: int, filename: str) -> str:
+        """Return canonical local path for a generated output artifact file."""
+
+        return str(self._base_dir / "output" / str(build_id) / filename)
+
     def save_json(self, relative_path: str, payload: Any) -> str:
         """Save payload as UTF-8 pretty JSON and return absolute path string."""
 
@@ -84,6 +89,11 @@ class LocalJsonStore:
 
         return self.save_json(f"evidence/{build_id}/{filename}", payload)
 
+    def save_output_json(self, build_id: int, filename: str, payload: Any) -> str:
+        """Save generated output payload under `data/output/{build_id}`."""
+
+        return self.save_json(f"output/{build_id}/{filename}", payload)
+
     def load_raw_bundle(self, build_id: int) -> dict[str, Any]:
         """Load raw bundle payload for a build id."""
 
@@ -94,5 +104,17 @@ class LocalJsonStore:
         """Load canonical payload for a build id."""
 
         payload = self.load_json(f"normalized/{build_id}/canonical.json")
+        return payload if isinstance(payload, dict) else {}
+
+    def load_evidence_bundle(self, build_id: int) -> dict[str, Any]:
+        """Load Phase 4 evidence bundle payload for a build id."""
+
+        payload = self.load_json(f"evidence/{build_id}/evidence_bundle.json")
+        return payload if isinstance(payload, dict) else {}
+
+    def load_evidence_bucket(self, build_id: int, bucket_filename: str) -> dict[str, Any]:
+        """Load one Phase 4 evidence bucket payload for a build id."""
+
+        payload = self.load_json(f"evidence/{build_id}/{bucket_filename}")
         return payload if isinstance(payload, dict) else {}
 

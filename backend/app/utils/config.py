@@ -22,6 +22,11 @@ class Settings(BaseSettings):
     AZURE_OPENAI_ENDPOINT: str | None = None
     AZURE_OPENAI_API_VERSION: str | None = None
     AZURE_OPENAI_DEPLOYMENT: str | None = None
+    AZURE_OPENAI_AUTH_MODE: str = "entra"
+
+    LLM_TEMPERATURE: float = 0
+    LLM_MAX_TOKENS: int = 1000
+    LLM_TIMEOUT_SECONDS: int = 60
 
     ADO_ORGANIZATION: str | None = None
     ADO_PROJECT: str | None = None

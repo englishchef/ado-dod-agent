@@ -84,3 +84,27 @@ def test_local_store_load_canonical(tmp_path: Path) -> None:
     payload = store.load_canonical(700)
     assert payload["build_id"] == 700
 
+
+def test_local_store_output_helpers(tmp_path: Path) -> None:
+    """Store should support generated output helper paths."""
+
+    store = LocalJsonStore(Settings(DATA_DIR=tmp_path))
+    output_path = store.output_path(88, "llm_outputs.json")
+    written = store.save_output_json(88, "llm_outputs.json", {"build_id": 88})
+    loaded = store.load_json("output/88/llm_outputs.json")
+
+    assert "output" in output_path
+    assert written.endswith("llm_outputs.json")
+    assert loaded["build_id"] == 88
+
+
+def test_local_store_load_evidence_bundle_and_bucket(tmp_path: Path) -> None:
+    """Store should load Phase 4 evidence bundle and bucket helpers."""
+
+    store = LocalJsonStore(Settings(DATA_DIR=tmp_path))
+    store.save_evidence_json(90, "evidence_bundle.json", {"build_id": 90})
+    store.save_evidence_json(90, "bucket_1_change_intent.json", {"target_fields": []})
+
+    assert store.load_evidence_bundle(90)["build_id"] == 90
+    assert store.load_evidence_bucket(90, "bucket_1_change_intent.json")["target_fields"] == []
+

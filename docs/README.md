@@ -7,11 +7,14 @@ Python backend for collecting Azure DevOps build metadata and preparing Definiti
 - Phase 2: raw metadata collection to local artifacts
 - Phase 3: deterministic canonical normalization from raw bundle to canonical JSON
 - Phase 4: deterministic evidence bucket generation from canonical JSON
+- Phase 5A: local Foundry/Azure OpenAI keyless model access smoke validation
+- Phase 5B: ServiceNow field draft generation from evidence buckets
 
 Out of scope:
-- LangChain/LangGraph execution
-- Cosmos DB
 - ServiceNow writeback
+- repair/confidence workflows
+- LangGraph orchestration
+- Cosmos DB
 
 ## Backend Layout
 ```text
@@ -163,6 +166,94 @@ Phase 4 scope:
 - no LLM calls yet
 - prompt-driven generation starts in Phase 5
 
+## Phase 5A LLM Access Smoke Validation
+Phase 5A validates the local Azure AI Foundry / Azure OpenAI-compatible model endpoint access path before any ServiceNow field generation is implemented. It uses Microsoft Entra ID through `DefaultAzureCredential` and RBAC/PIM. No API key is used or supported.
+
+Required configuration:
+```powershell
+AZURE_OPENAI_ENDPOINT=https://<resource-name>.openai.azure.com/
+AZURE_OPENAI_DEPLOYMENT=<deployment-name>
+AZURE_OPENAI_API_VERSION=<api-version-from-portal>
+AZURE_OPENAI_AUTH_MODE=entra
+LLM_TEMPERATURE=0
+LLM_MAX_TOKENS=1000
+LLM_TIMEOUT_SECONDS=60
+```
+
+Required Azure access:
+- PIM role activated before running the smoke script.
+- Model invoke RBAC role assigned, such as Cognitive Services OpenAI User or equivalent Foundry role.
+- User authenticated through Azure CLI or another `DefaultAzureCredential` source in the current shell/dev container.
+- Correct subscription and tenant selected.
+
+CLI:
+```powershell
+python scripts/smoke_llm_access.py
+```
+
+Make:
+```powershell
+make smoke-llm
+```
+
+Expected successful response:
+```json
+{"status":"ok"}
+```
+
+Troubleshooting:
+- `401`: token audience or authentication problem.
+- `403`: RBAC, PIM, or assignment scope problem.
+- `DeploymentNotFound`: deployment name and endpoint do not match.
+- `DefaultAzureCredential` failure: no usable credential in the current environment.
+
+Phase 5A does not generate ServiceNow fields. Full LLM generation from evidence buckets is Phase 5B.
+
+## Phase 5B ServiceNow Field Draft Generation
+Phase 5B generates draft ServiceNow Definition of Done field text from the three deterministic evidence buckets created in Phase 4. Phase 5A model smoke access must succeed first.
+
+Required input:
+- `data/evidence/{build_id}/evidence_bundle.json`
+
+Outputs:
+- `data/output/{build_id}/bucket_1_output.json`
+- `data/output/{build_id}/bucket_2_output.json`
+- `data/output/{build_id}/bucket_3_output.json`
+- `data/output/{build_id}/llm_outputs.json`
+
+Generated target fields:
+- `change_description`
+- `short_change_description`
+- `justification`
+- `testing_performed`
+- `implementation_plan`
+- `validation_plan`
+- `backout_plan`
+- `risk_impact_analysis`
+
+CLI:
+```powershell
+python scripts/generate_service_now_fields.py --build-id <BUILD_ID>
+```
+
+Make:
+```powershell
+make generate-fields BUILD_ID=<BUILD_ID>
+```
+
+Optional explicit inputs:
+```powershell
+python scripts/generate_service_now_fields.py --build-id <BUILD_ID> --evidence-bundle data/evidence/<BUILD_ID>/evidence_bundle.json
+python scripts/generate_service_now_fields.py --build-id <BUILD_ID> --bucket-1 data/evidence/<BUILD_ID>/bucket_1_change_intent.json --bucket-2 data/evidence/<BUILD_ID>/bucket_2_execution_validation.json --bucket-3 data/evidence/<BUILD_ID>/bucket_3_rollback_risk.json
+```
+
+Phase 5B reminders:
+- No ServiceNow update/writeback occurs.
+- No repair retry logic is implemented yet.
+- No deterministic confidence scoring is implemented yet.
+- Generated output is draft text and should be reviewed.
+- Missing PR, test, rollback, or other evidence should be reflected honestly in `missing_information` and conservative field language.
+
 Normalize API:
 - `POST /api/v1/runs/normalize`
 - request: `build_id` required, `raw_bundle_path` optional
@@ -185,6 +276,8 @@ python scripts/smoke_ado_auth.py --build-id <BUILD_ID>
 python scripts/collect_raw_metadata.py --build-id <BUILD_ID>
 python scripts/normalize_raw_metadata.py --build-id <BUILD_ID>
 python scripts/build_evidence_buckets.py --build-id <BUILD_ID>
+python scripts/smoke_llm_access.py
+python scripts/generate_service_now_fields.py --build-id <BUILD_ID>
 python -m pytest -q
 python -m ruff check .
 python -m mypy --no-incremental --cache-dir .cache/mypy_backend backend scripts tests
@@ -199,6 +292,8 @@ make smoke-ado BUILD_ID=<BUILD_ID>
 make collect-raw BUILD_ID=<BUILD_ID>
 make normalize-raw BUILD_ID=<BUILD_ID>
 make build-evidence BUILD_ID=<BUILD_ID>
+make smoke-llm
+make generate-fields BUILD_ID=<BUILD_ID>
 ```
 
 ## Troubleshooting

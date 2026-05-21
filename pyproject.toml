@@ -7,7 +7,7 @@ name = "ado-dod-agent"
 version = "0.1.0"
 description = "Phase-2 foundation for Azure DevOps raw metadata collection and service integration scaffolding."
 readme = "docs/README.md"
-requires-python = ">=3.12,<3.13"
+requires-python = ">=3.11,<3.12"
 dependencies = [
   "fastapi>=0.115,<1.0",
   "uvicorn[standard]>=0.30,<1.0",
@@ -42,14 +42,14 @@ addopts = "-q"
 
 [tool.ruff]
 line-length = 100
-target-version = "py312"
+target-version = "py311"
 src = ["backend", "tests", "scripts"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B"]
 
 [tool.mypy]
-python_version = "3.12"
+python_version = "3.11"
 files = ["backend", "scripts", "tests"]
 cache_dir = ".cache/mypy_backend"
 disallow_untyped_defs = true

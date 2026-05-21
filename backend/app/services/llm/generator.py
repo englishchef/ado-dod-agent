@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, TypeVar
 
 from pydantic import BaseModel, ValidationError
 
@@ -22,6 +22,8 @@ from backend.app.prompts import (
 from backend.app.services.llm.azure_foundry_client import AzureFoundryChatClient, LlmClientError
 from backend.app.services.llm.json_parser import extract_json_object
 from backend.app.utils.config import get_settings
+
+TGeneratedOutput = TypeVar("TGeneratedOutput", bound=BaseModel)
 
 
 def generate_bucket_1(
@@ -89,7 +91,7 @@ def generate_all_buckets(
     )
 
 
-def _generate_bucket[TGeneratedOutput: BaseModel](
+def _generate_bucket(
     prompt: str,
     output_model: type[TGeneratedOutput],
     client: AzureFoundryChatClient | None,

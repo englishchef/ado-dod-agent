@@ -9,10 +9,10 @@ Python backend for collecting Azure DevOps build metadata and preparing Definiti
 - Phase 4: deterministic evidence bucket generation from canonical JSON
 - Phase 5A: local Foundry/Azure OpenAI keyless model access smoke validation
 - Phase 5B: ServiceNow field draft generation from evidence buckets
+- Phase 6: validation, confidence scoring, and ServiceNow-ready payload assembly
 
 Out of scope:
 - ServiceNow writeback
-- repair/confidence workflows
 - LangGraph orchestration
 - Cosmos DB
 
@@ -254,6 +254,37 @@ Phase 5B reminders:
 - Generated output is draft text and should be reviewed.
 - Missing PR, test, rollback, or other evidence should be reflected honestly in `missing_information` and conservative field language.
 
+## Phase 6 Validate And Assemble Output
+Phase 6 validates the Phase 5B LLM outputs, flags unsupported claims, computes deterministic confidence, and assembles the final flat ServiceNow-ready payload. It does not update ServiceNow.
+
+Inputs:
+- `data/output/{build_id}/llm_outputs.json`
+- `data/evidence/{build_id}/evidence_bundle.json`
+
+Outputs:
+- `data/output/{build_id}/validated_output.json`
+- `data/output/{build_id}/service_now_payload.json`
+- `data/output/{build_id}/confidence.json`
+
+CLI:
+```powershell
+python scripts/validate_service_now_payload.py --build-id <BUILD_ID>
+```
+
+Make:
+```powershell
+make validate-output BUILD_ID=<BUILD_ID>
+```
+
+Validation behavior:
+- Errors fail validation and produce a non-zero script exit code.
+- Warnings do not fail validation.
+- Missing test evidence lowers confidence but does not automatically fail.
+- Missing PR evidence is not a hard failure.
+- Unsupported claims such as unproven test-pass, rollback-tested, or absolute no-risk claims are flagged.
+- No ServiceNow update/writeback occurs in this phase.
+- LangGraph orchestration starts in a later phase.
+
 Normalize API:
 - `POST /api/v1/runs/normalize`
 - request: `build_id` required, `raw_bundle_path` optional
@@ -278,6 +309,7 @@ python scripts/normalize_raw_metadata.py --build-id <BUILD_ID>
 python scripts/build_evidence_buckets.py --build-id <BUILD_ID>
 python scripts/smoke_llm_access.py
 python scripts/generate_service_now_fields.py --build-id <BUILD_ID>
+python scripts/validate_service_now_payload.py --build-id <BUILD_ID>
 python -m pytest -q
 python -m ruff check .
 python -m mypy --no-incremental --cache-dir .cache/mypy_backend backend scripts tests
@@ -294,6 +326,7 @@ make normalize-raw BUILD_ID=<BUILD_ID>
 make build-evidence BUILD_ID=<BUILD_ID>
 make smoke-llm
 make generate-fields BUILD_ID=<BUILD_ID>
+make validate-output BUILD_ID=<BUILD_ID>
 ```
 
 ## Troubleshooting

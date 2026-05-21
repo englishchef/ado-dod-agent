@@ -108,3 +108,18 @@ def test_local_store_load_evidence_bundle_and_bucket(tmp_path: Path) -> None:
     assert store.load_evidence_bundle(90)["build_id"] == 90
     assert store.load_evidence_bucket(90, "bucket_1_change_intent.json")["target_fields"] == []
 
+
+def test_local_store_phase_6_helpers(tmp_path: Path) -> None:
+    """Store should support Phase 6 output helpers."""
+
+    store = LocalJsonStore(Settings(DATA_DIR=tmp_path))
+    store.save_output_json(91, "llm_outputs.json", {"build_id": 91})
+    validated_path = store.save_validated_output_json(91, {"is_valid": True})
+    payload_path = store.save_service_now_payload_json(91, {"change_description": "x"})
+    confidence_path = store.save_confidence_json(91, {"overall": 0.8})
+
+    assert store.load_llm_outputs(91)["build_id"] == 91
+    assert validated_path.endswith("validated_output.json")
+    assert payload_path.endswith("service_now_payload.json")
+    assert confidence_path.endswith("confidence.json")
+

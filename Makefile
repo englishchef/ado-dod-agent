@@ -1,4 +1,4 @@
-.PHONY: install run test lint format validate-env smoke-ado smoke-llm generate-fields
+.PHONY: install run test lint format validate-env smoke-ado smoke-llm generate-fields validate-output
 
 install:
 	python -m pip install --upgrade pip
@@ -28,3 +28,6 @@ smoke-llm:
 
 generate-fields:
 	python scripts/generate_service_now_fields.py --build-id $(BUILD_ID)
+
+validate-output:
+	python scripts/validate_service_now_payload.py --build-id $(BUILD_ID)

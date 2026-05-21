@@ -94,6 +94,21 @@ class LocalJsonStore:
 
         return self.save_json(f"output/{build_id}/{filename}", payload)
 
+    def save_validated_output_json(self, build_id: int, payload: Any) -> str:
+        """Save the full Phase 6 validated output artifact."""
+
+        return self.save_output_json(build_id, "validated_output.json", payload)
+
+    def save_service_now_payload_json(self, build_id: int, payload: Any) -> str:
+        """Save the flat ServiceNow-ready payload artifact."""
+
+        return self.save_output_json(build_id, "service_now_payload.json", payload)
+
+    def save_confidence_json(self, build_id: int, payload: Any) -> str:
+        """Save the Phase 6 confidence score artifact."""
+
+        return self.save_output_json(build_id, "confidence.json", payload)
+
     def load_raw_bundle(self, build_id: int) -> dict[str, Any]:
         """Load raw bundle payload for a build id."""
 
@@ -116,5 +131,11 @@ class LocalJsonStore:
         """Load one Phase 4 evidence bucket payload for a build id."""
 
         payload = self.load_json(f"evidence/{build_id}/{bucket_filename}")
+        return payload if isinstance(payload, dict) else {}
+
+    def load_llm_outputs(self, build_id: int) -> dict[str, Any]:
+        """Load Phase 5B combined LLM outputs for a build id."""
+
+        payload = self.load_json(f"output/{build_id}/llm_outputs.json")
         return payload if isinstance(payload, dict) else {}
 

@@ -1,0 +1,55 @@
+{
+  "artifact_evidence": [
+    {
+      "download_url": "https://artprodcus3.artifacts.visualstudio.com/A8c87cb64-9b42-48ab-b7d3-265477b258b5/0a386ba7-1816-4100-9a99-b6e36fd6ad4a/_apis/artifact/cGlwZWxpbmVhcnRpZmFjdDovL3RlamFwdi9wcm9qZWN0SWQvMGEzODZiYTctMTgxNi00MTAwLTlhOTktYjZlMzZmZDZhZDRhL2J1aWxkSWQvNS9hcnRpZmFjdE5hbWUvZHJvcA2/content?format=zip",
+      "name": "drop",
+      "resource_type": "PipelineArtifact",
+      "source_ref": "raw.artifacts.value[0]",
+      "type": null
+    }
+  ],
+  "evidence_gaps": [
+    "no impacted components detected",
+    "no test context available"
+  ],
+  "evidence_references": [
+    "raw.artifacts.value[0]"
+  ],
+  "failed_or_warning_evidence": [],
+  "impacted_components": [],
+  "risk_flags": {
+    "config_change_detected": true,
+    "database_change_detected": false,
+    "dependency_change_detected": true,
+    "feature_flag_change_detected": false,
+    "infrastructure_change_detected": false
+  },
+  "risk_signals": [
+    "missing_test_context",
+    "config_change_detected",
+    "dependency_change_detected"
+  ],
+  "rollback_indicators": [
+    "60079d94f2148dcf3adafcb78e28471a98d58db6",
+    "20260419.5",
+    "drop",
+    "Checkout nfcudevopstest@main to s",
+    "Post-job: Checkout nfcudevopstest@main to s",
+    "Run tests"
+  ],
+  "service_context": {
+    "build_id": 5,
+    "build_number": "20260419.5",
+    "pipeline_name": "nfcudevopstest",
+    "repository_name": "nfcudevopstest",
+    "requested_by": "Microsoft.VisualStudio.Services.TFS",
+    "result": "succeeded",
+    "source_branch": "refs/heads/main",
+    "source_version": "60079d94f2148dcf3adafcb78e28471a98d58db6",
+    "status": "completed"
+  },
+  "target_fields": [
+    "backout_plan",
+    "risk_impact_analysis"
+  ]
+}

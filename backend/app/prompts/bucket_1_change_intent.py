@@ -8,10 +8,12 @@ from typing import Any
 PROMPT_VERSION = "1.0"
 
 
-def build_prompt(evidence: dict[str, Any]) -> str:
+def build_prompt(evidence: dict[str, Any], prompt_strategy: str | None = None) -> str:
     """Build the bucket 1 prompt from deterministic evidence only."""
 
     evidence_json = json.dumps(evidence, indent=2, sort_keys=True, ensure_ascii=False)
+    strategy = prompt_strategy or "bucket_1_standard"
+    strategy_guidance = _strategy_guidance(strategy)
     return f"""You are generating ServiceNow-ready change management text.
 Use only the provided evidence.
 Do not invent facts.
@@ -25,6 +27,7 @@ Use concise, enterprise-ready language.
 Include evidence references from evidence_references/source_ref where available.
 If a field has weak evidence, write conservative language instead of inventing.
 Keep model_confidence between 0 and 1.
+Selected prompt strategy: {strategy}
 
 Target fields:
 - change_description
@@ -40,6 +43,7 @@ Guidance:
 - If only commit evidence exists, say the justification is inferred from available
   implementation evidence.
 - Do not include unsupported business benefits.
+{strategy_guidance}
 
 Required JSON shape:
 {{
@@ -55,3 +59,14 @@ Required JSON shape:
 
 Evidence:
 {evidence_json}"""
+
+
+def _strategy_guidance(strategy: str) -> str:
+    if strategy == "bucket_1_low_evidence":
+        return """Strategy-specific guidance:
+- Use conservative wording because change-intent evidence is weak.
+- Explicitly state when work item or PR metadata is missing.
+- Avoid strong business justification if only commit evidence exists.
+- Put missing work item, PR, or business context in missing_information."""
+    return """Strategy-specific guidance:
+- Use the standard change-intent prompt behavior."""

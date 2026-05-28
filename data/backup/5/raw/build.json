@@ -1,0 +1,144 @@
+{
+  "_links": {
+    "badge": {
+      "href": "https://dev.azure.com/tejapv/0a386ba7-1816-4100-9a99-b6e36fd6ad4a/_apis/build/status/1"
+    },
+    "self": {
+      "href": "https://dev.azure.com/tejapv/0a386ba7-1816-4100-9a99-b6e36fd6ad4a/_apis/build/Builds/5"
+    },
+    "sourceVersionDisplayUri": {
+      "href": "https://dev.azure.com/tejapv/0a386ba7-1816-4100-9a99-b6e36fd6ad4a/_apis/build/builds/5/sources"
+    },
+    "timeline": {
+      "href": "https://dev.azure.com/tejapv/0a386ba7-1816-4100-9a99-b6e36fd6ad4a/_apis/build/builds/5/Timeline"
+    },
+    "web": {
+      "href": "https://dev.azure.com/tejapv/0a386ba7-1816-4100-9a99-b6e36fd6ad4a/_build/results?buildId=5"
+    }
+  },
+  "appendCommitMessageToRunName": true,
+  "buildNumber": "20260419.5",
+  "buildNumberRevision": 5,
+  "definition": {
+    "drafts": [],
+    "id": 1,
+    "name": "nfcudevopstest",
+    "path": "\\",
+    "project": {
+      "id": "0a386ba7-1816-4100-9a99-b6e36fd6ad4a",
+      "lastUpdateTime": "2025-12-23T16:53:18.813Z",
+      "name": "nfcudevopstest",
+      "revision": 12,
+      "state": "wellFormed",
+      "url": "https://dev.azure.com/tejapv/_apis/projects/0a386ba7-1816-4100-9a99-b6e36fd6ad4a",
+      "visibility": "private"
+    },
+    "queueStatus": "enabled",
+    "revision": 1,
+    "type": "build",
+    "uri": "vstfs:///Build/Definition/1",
+    "url": "https://dev.azure.com/tejapv/0a386ba7-1816-4100-9a99-b6e36fd6ad4a/_apis/build/Definitions/1?revision=1"
+  },
+  "finishTime": "2026-04-19T23:30:44.6157197Z",
+  "id": 5,
+  "lastChangedBy": {
+    "_links": {
+      "avatar": {
+        "href": "https://dev.azure.com/tejapv/_apis/GraphProfile/MemberAvatars/s2s.MDAwMDAwMDItMDAwMC04ODg4LTgwMDAtMDAwMDAwMDAwMDAwQDJjODk1OTA4LTA0ZTAtNDk1Mi04OWZkLTU0YjAwNDZkNjI4OA"
+      }
+    },
+    "descriptor": "s2s.MDAwMDAwMDItMDAwMC04ODg4LTgwMDAtMDAwMDAwMDAwMDAwQDJjODk1OTA4LTA0ZTAtNDk1Mi04OWZkLTU0YjAwNDZkNjI4OA",
+    "displayName": "Microsoft.VisualStudio.Services.TFS",
+    "id": "00000002-0000-8888-8000-000000000000",
+    "imageUrl": "https://dev.azure.com/tejapv/_apis/GraphProfile/MemberAvatars/s2s.MDAwMDAwMDItMDAwMC04ODg4LTgwMDAtMDAwMDAwMDAwMDAwQDJjODk1OTA4LTA0ZTAtNDk1Mi04OWZkLTU0YjAwNDZkNjI4OA",
+    "uniqueName": "00000002-0000-8888-8000-000000000000@2c895908-04e0-4952-89fd-54b0046d6288",
+    "url": "https://spsprodcus7.vssps.visualstudio.com/Ae8cbfe4e-2f6e-41c9-a700-46e0a9dcadce/_apis/Identities/00000002-0000-8888-8000-000000000000"
+  },
+  "lastChangedDate": "2026-04-19T23:30:45.063Z",
+  "logs": {
+    "id": 0,
+    "type": "Container",
+    "url": "https://dev.azure.com/tejapv/0a386ba7-1816-4100-9a99-b6e36fd6ad4a/_apis/build/builds/5/logs"
+  },
+  "orchestrationPlan": {
+    "planId": "681a58ba-7dae-4874-bfc9-616f68b0d849"
+  },
+  "plans": [
+    {
+      "planId": "681a58ba-7dae-4874-bfc9-616f68b0d849"
+    }
+  ],
+  "priority": "normal",
+  "project": {
+    "id": "0a386ba7-1816-4100-9a99-b6e36fd6ad4a",
+    "lastUpdateTime": "2025-12-23T16:53:18.813Z",
+    "name": "nfcudevopstest",
+    "revision": 12,
+    "state": "wellFormed",
+    "url": "https://dev.azure.com/tejapv/_apis/projects/0a386ba7-1816-4100-9a99-b6e36fd6ad4a",
+    "visibility": "private"
+  },
+  "properties": {},
+  "queue": {
+    "id": 9,
+    "name": "Azure Pipelines",
+    "pool": {
+      "id": 9,
+      "isHosted": true,
+      "name": "Azure Pipelines"
+    }
+  },
+  "queueTime": "2026-04-19T23:21:15.0779475Z",
+  "reason": "individualCI",
+  "repository": {
+    "checkoutSubmodules": false,
+    "clean": null,
+    "id": "162ee1a9-c41d-4e7b-a129-c4ae6632aa38",
+    "name": "nfcudevopstest",
+    "type": "TfsGit",
+    "url": "https://dev.azure.com/tejapv/nfcudevopstest/_git/nfcudevopstest"
+  },
+  "requestedBy": {
+    "_links": {
+      "avatar": {
+        "href": "https://dev.azure.com/tejapv/_apis/GraphProfile/MemberAvatars/s2s.MDAwMDAwMDItMDAwMC04ODg4LTgwMDAtMDAwMDAwMDAwMDAwQDJjODk1OTA4LTA0ZTAtNDk1Mi04OWZkLTU0YjAwNDZkNjI4OA"
+      }
+    },
+    "descriptor": "s2s.MDAwMDAwMDItMDAwMC04ODg4LTgwMDAtMDAwMDAwMDAwMDAwQDJjODk1OTA4LTA0ZTAtNDk1Mi04OWZkLTU0YjAwNDZkNjI4OA",
+    "displayName": "Microsoft.VisualStudio.Services.TFS",
+    "id": "00000002-0000-8888-8000-000000000000",
+    "imageUrl": "https://dev.azure.com/tejapv/_apis/GraphProfile/MemberAvatars/s2s.MDAwMDAwMDItMDAwMC04ODg4LTgwMDAtMDAwMDAwMDAwMDAwQDJjODk1OTA4LTA0ZTAtNDk1Mi04OWZkLTU0YjAwNDZkNjI4OA",
+    "uniqueName": "00000002-0000-8888-8000-000000000000@2c895908-04e0-4952-89fd-54b0046d6288",
+    "url": "https://spsprodcus7.vssps.visualstudio.com/Ae8cbfe4e-2f6e-41c9-a700-46e0a9dcadce/_apis/Identities/00000002-0000-8888-8000-000000000000"
+  },
+  "requestedFor": {
+    "_links": {
+      "avatar": {
+        "href": "https://dev.azure.com/tejapv/_apis/GraphProfile/MemberAvatars/msa.MzVhYjVmY2YtNjMyNi03YzM3LWFiZGQtYThhZDM0OWNjNzJl"
+      }
+    },
+    "descriptor": "msa.MzVhYjVmY2YtNjMyNi03YzM3LWFiZGQtYThhZDM0OWNjNzJl",
+    "displayName": "Saiteja Perumbuduru Venkata",
+    "id": "35ab5fcf-6326-6c37-abdd-a8ad349cc72e",
+    "imageUrl": "https://dev.azure.com/tejapv/_apis/GraphProfile/MemberAvatars/msa.MzVhYjVmY2YtNjMyNi03YzM3LWFiZGQtYThhZDM0OWNjNzJl",
+    "uniqueName": "tejapv@gmail.com",
+    "url": "https://spsprodcus7.vssps.visualstudio.com/Ae8cbfe4e-2f6e-41c9-a700-46e0a9dcadce/_apis/Identities/35ab5fcf-6326-6c37-abdd-a8ad349cc72e"
+  },
+  "result": "succeeded",
+  "retainedByRelease": false,
+  "sourceBranch": "refs/heads/main",
+  "sourceVersion": "60079d94f2148dcf3adafcb78e28471a98d58db6",
+  "startTime": "2026-04-19T23:21:17.4571257Z",
+  "status": "completed",
+  "tags": [],
+  "triggerInfo": {
+    "ci.message": "pipeline fix for python errors",
+    "ci.sourceBranch": "refs/heads/main",
+    "ci.sourceSha": "60079d94f2148dcf3adafcb78e28471a98d58db6",
+    "ci.triggerRepository": "162ee1a9-c41d-4e7b-a129-c4ae6632aa38"
+  },
+  "triggeredByBuild": null,
+  "uri": "vstfs:///Build/Build/5",
+  "url": "https://dev.azure.com/tejapv/0a386ba7-1816-4100-9a99-b6e36fd6ad4a/_apis/build/Builds/5",
+  "validationResults": []
+}

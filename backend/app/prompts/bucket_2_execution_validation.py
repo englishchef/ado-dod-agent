@@ -8,10 +8,12 @@ from typing import Any
 PROMPT_VERSION = "1.0"
 
 
-def build_prompt(evidence: dict[str, Any]) -> str:
+def build_prompt(evidence: dict[str, Any], prompt_strategy: str | None = None) -> str:
     """Build the bucket 2 prompt from deterministic evidence only."""
 
     evidence_json = json.dumps(evidence, indent=2, sort_keys=True, ensure_ascii=False)
+    strategy = prompt_strategy or "bucket_2_standard"
+    strategy_guidance = _strategy_guidance(strategy)
     return f"""You are generating ServiceNow-ready change management text.
 Use only the provided evidence.
 Do not invent facts.
@@ -25,6 +27,7 @@ Use concise, enterprise-ready language.
 Include evidence references from evidence_references/source_ref where available.
 If a field has weak evidence, write conservative language instead of inventing.
 Keep model_confidence between 0 and 1.
+Selected prompt strategy: {strategy}
 
 Target fields:
 - testing_performed
@@ -42,6 +45,7 @@ Guidance:
   validation signals.
 - If validation evidence is weak, use conservative language.
 - Avoid claiming production validation has already happened unless evidence proves it.
+{strategy_guidance}
 
 Required JSON shape:
 {{
@@ -57,3 +61,14 @@ Required JSON shape:
 
 Evidence:
 {evidence_json}"""
+
+
+def _strategy_guidance(strategy: str) -> str:
+    if strategy == "bucket_2_missing_tests":
+        return """Strategy-specific guidance:
+- Explicitly state that no automated test results were available in collected ADO evidence.
+- Do not imply tests passed.
+- Use validation, scan, stage, job, task, and pipeline evidence only when available.
+- Lower model_confidence appropriately when test evidence is missing."""
+    return """Strategy-specific guidance:
+- Use the standard execution and validation prompt behavior."""

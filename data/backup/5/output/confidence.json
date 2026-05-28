@@ -1,0 +1,36 @@
+{
+  "bucket_1": 0.6539999999999999,
+  "bucket_2": 0.7349999999999999,
+  "bucket_3": 0.814,
+  "overall": 0.7343333333333333,
+  "rationale": {
+    "bucket_1": [
+      "Baseline deterministic score starts at 0.70.",
+      "Work item evidence is missing.",
+      "Commit evidence is present.",
+      "Pr metadata is missing.",
+      "Validation warnings reduce score by 0.05.",
+      "Model confidence contribution: 0.78."
+    ],
+    "bucket_2": [
+      "Baseline deterministic score starts at 0.70.",
+      "Stage/task evidence is present.",
+      "Artifact evidence is present.",
+      "Test results is missing.",
+      "Validation signals is present.",
+      "Validation warnings reduce score by 0.05.",
+      "Model confidence contribution: 0.70."
+    ],
+    "bucket_3": [
+      "Baseline deterministic score starts at 0.70.",
+      "Artifact evidence is present.",
+      "Rollback indicators is present.",
+      "Risk flags is present.",
+      "Missing test context increases rollback/risk uncertainty.",
+      "Model confidence contribution: 0.73."
+    ],
+    "overall": [
+      "Overall score is the average of bucket scores."
+    ]
+  }
+}

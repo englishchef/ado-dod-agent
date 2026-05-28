@@ -1,0 +1,273 @@
+{
+  "artifact_evidence": [
+    {
+      "download_url": "https://artprodcus3.artifacts.visualstudio.com/A8c87cb64-9b42-48ab-b7d3-265477b258b5/0a386ba7-1816-4100-9a99-b6e36fd6ad4a/_apis/artifact/cGlwZWxpbmVhcnRpZmFjdDovL3RlamFwdi9wcm9qZWN0SWQvMGEzODZiYTctMTgxNi00MTAwLTlhOTktYjZlMzZmZDZhZDRhL2J1aWxkSWQvNS9hcnRpZmFjdE5hbWUvZHJvcA2/content?format=zip",
+      "name": "drop",
+      "resource_type": "PipelineArtifact",
+      "source_ref": "raw.artifacts.value[0]",
+      "type": null
+    }
+  ],
+  "deployment_signals": [
+    "Checkout nfcudevopstest@main to s",
+    "Post-job: Checkout nfcudevopstest@main to s",
+    "RunTests",
+    "Run tests",
+    "Test",
+    "Deploy to Prod",
+    "DeployWebApp"
+  ],
+  "evidence_gaps": [
+    "test_runs_missing",
+    "test_results_missing",
+    "no test results found",
+    "section truncation applied"
+  ],
+  "evidence_references": [
+    "raw.timeline.records[11]",
+    "raw.timeline.records[22]",
+    "raw.timeline.records[32]",
+    "raw.timeline.records[7]",
+    "raw.timeline.records[10]",
+    "raw.timeline.records[24]",
+    "raw.timeline.records[27]",
+    "raw.timeline.records[33]",
+    "raw.timeline.records[18]",
+    "raw.timeline.records[21]",
+    "raw.timeline.records[2]",
+    "raw.timeline.records[6]",
+    "raw.timeline.records[8]",
+    "raw.timeline.records[14]",
+    "raw.timeline.records[20]",
+    "raw.timeline.records[31]",
+    "raw.timeline.records[0]",
+    "raw.timeline.records[1]",
+    "raw.timeline.records[3]",
+    "raw.timeline.records[4]",
+    "raw.artifacts.value[0]"
+  ],
+  "implementation_signals": [
+    "Prepare package",
+    "ArchiveFiles",
+    "PublishPipelineArtifact",
+    "Package",
+    "Report build status",
+    "Build",
+    "Finalize build",
+    "drop"
+  ],
+  "job_evidence": [
+    {
+      "duration_seconds": 271.41,
+      "name": "RunTests",
+      "result": "succeeded",
+      "source_ref": "raw.timeline.records[7]",
+      "state": "completed"
+    },
+    {
+      "duration_seconds": 276.51,
+      "name": "RunTests",
+      "result": "succeeded",
+      "source_ref": "raw.timeline.records[10]",
+      "state": "completed"
+    },
+    {
+      "duration_seconds": 213.496666,
+      "name": "DeployWebApp",
+      "result": "succeeded",
+      "source_ref": "raw.timeline.records[24]",
+      "state": "completed"
+    },
+    {
+      "duration_seconds": 217.583333,
+      "name": "DeployWebApp",
+      "result": "succeeded",
+      "source_ref": "raw.timeline.records[27]",
+      "state": "completed"
+    },
+    {
+      "duration_seconds": 0.343333,
+      "name": "Finalize build",
+      "result": "succeeded",
+      "source_ref": "raw.timeline.records[33]",
+      "state": "completed"
+    },
+    {
+      "duration_seconds": 32.26,
+      "name": "Package",
+      "result": "succeeded",
+      "source_ref": "raw.timeline.records[18]",
+      "state": "completed"
+    },
+    {
+      "duration_seconds": 35.69,
+      "name": "Package",
+      "result": "succeeded",
+      "source_ref": "raw.timeline.records[21]",
+      "state": "completed"
+    }
+  ],
+  "quality_signals": [
+    "total_tests=0",
+    "passed_tests=0",
+    "failed_tests=0",
+    "skipped_tests=0",
+    "test_runs_missing",
+    "test_results_missing"
+  ],
+  "service_context": {
+    "build_id": 5,
+    "build_number": "20260419.5",
+    "pipeline_name": "nfcudevopstest",
+    "repository_name": "nfcudevopstest",
+    "requested_by": "Microsoft.VisualStudio.Services.TFS",
+    "result": "succeeded",
+    "source_branch": "refs/heads/main",
+    "source_version": "60079d94f2148dcf3adafcb78e28471a98d58db6",
+    "status": "completed"
+  },
+  "stage_evidence": [
+    {
+      "duration_seconds": 276.623333,
+      "name": "Test",
+      "result": "succeeded",
+      "source_ref": "raw.timeline.records[11]",
+      "state": "completed"
+    },
+    {
+      "duration_seconds": 217.68,
+      "name": "Deploy to Prod",
+      "result": "succeeded",
+      "source_ref": "raw.timeline.records[22]",
+      "state": "completed"
+    },
+    {
+      "duration_seconds": 35.773333,
+      "name": "Build",
+      "result": "succeeded",
+      "source_ref": "raw.timeline.records[32]",
+      "state": "completed"
+    }
+  ],
+  "target_fields": [
+    "testing_performed",
+    "implementation_plan",
+    "validation_plan"
+  ],
+  "task_evidence": [
+    {
+      "duration_seconds": 9.853334,
+      "log_url": "https://dev.azure.com/tejapv/0a386ba7-1816-4100-9a99-b6e36fd6ad4a/_apis/build/builds/5/logs/5",
+      "name": "Checkout nfcudevopstest@main to s",
+      "result": "succeeded",
+      "source_ref": "raw.timeline.records[2]",
+      "state": "completed",
+      "type": "Task"
+    },
+    {
+      "duration_seconds": 0.82,
+      "log_url": "https://dev.azure.com/tejapv/0a386ba7-1816-4100-9a99-b6e36fd6ad4a/_apis/build/builds/5/logs/10",
+      "name": "Post-job: Checkout nfcudevopstest@main to s",
+      "result": "succeeded",
+      "source_ref": "raw.timeline.records[6]",
+      "state": "completed",
+      "type": "Task"
+    },
+    {
+      "duration_seconds": 18.31,
+      "log_url": "https://dev.azure.com/tejapv/0a386ba7-1816-4100-9a99-b6e36fd6ad4a/_apis/build/builds/5/logs/9",
+      "name": "Run tests",
+      "result": "succeeded",
+      "source_ref": "raw.timeline.records[8]",
+      "state": "completed",
+      "type": "Task"
+    },
+    {
+      "duration_seconds": 6.666667,
+      "log_url": "https://dev.azure.com/tejapv/0a386ba7-1816-4100-9a99-b6e36fd6ad4a/_apis/build/builds/5/logs/15",
+      "name": "Checkout nfcudevopstest@main to s",
+      "result": "succeeded",
+      "source_ref": "raw.timeline.records[14]",
+      "state": "completed",
+      "type": "Task"
+    },
+    {
+      "duration_seconds": 0.893333,
+      "log_url": "https://dev.azure.com/tejapv/0a386ba7-1816-4100-9a99-b6e36fd6ad4a/_apis/build/builds/5/logs/19",
+      "name": "Post-job: Checkout nfcudevopstest@main to s",
+      "result": "succeeded",
+      "source_ref": "raw.timeline.records[20]",
+      "state": "completed",
+      "type": "Task"
+    },
+    {
+      "duration_seconds": 0.273333,
+      "log_url": "https://dev.azure.com/tejapv/0a386ba7-1816-4100-9a99-b6e36fd6ad4a/_apis/build/builds/5/logs/27",
+      "name": "Report build status",
+      "result": "succeeded",
+      "source_ref": "raw.timeline.records[31]",
+      "state": "completed",
+      "type": "Task"
+    },
+    {
+      "duration_seconds": 0.0,
+      "log_url": null,
+      "name": "Checkpoint",
+      "result": "succeeded",
+      "source_ref": "raw.timeline.records[0]",
+      "state": "completed",
+      "type": "Checkpoint"
+    },
+    {
+      "duration_seconds": 0.963334,
+      "log_url": "https://dev.azure.com/tejapv/0a386ba7-1816-4100-9a99-b6e36fd6ad4a/_apis/build/builds/5/logs/4",
+      "name": "Initialize job",
+      "result": "succeeded",
+      "source_ref": "raw.timeline.records[1]",
+      "state": "completed",
+      "type": "Task"
+    },
+    {
+      "duration_seconds": 5.833333,
+      "log_url": "https://dev.azure.com/tejapv/0a386ba7-1816-4100-9a99-b6e36fd6ad4a/_apis/build/builds/5/logs/6",
+      "name": "Resolve Python",
+      "result": "succeeded",
+      "source_ref": "raw.timeline.records[3]",
+      "state": "completed",
+      "type": "Task"
+    },
+    {
+      "duration_seconds": 30.453334,
+      "log_url": "https://dev.azure.com/tejapv/0a386ba7-1816-4100-9a99-b6e36fd6ad4a/_apis/build/builds/5/logs/7",
+      "name": "Create CI venv",
+      "result": "succeeded",
+      "source_ref": "raw.timeline.records[4]",
+      "state": "completed",
+      "type": "Task"
+    }
+  ],
+  "test_evidence": {
+    "failed_tests": 0,
+    "failed_tests_sample": [],
+    "missing_test_context": [
+      "test_runs_missing",
+      "test_results_missing",
+      "no test results found"
+    ],
+    "pass_rate": null,
+    "passed_tests": 0,
+    "skipped_tests": 0,
+    "total_runs": 0,
+    "total_tests": 0,
+    "warning_tests_sample": []
+  },
+  "validation_signals": [
+    "Checkpoint",
+    "Checkout nfcudevopstest@main to s",
+    "Post-job: Checkout nfcudevopstest@main to s",
+    "RunTests",
+    "Run tests",
+    "Test",
+    "Checkpoint.Authorization"
+  ]
+}

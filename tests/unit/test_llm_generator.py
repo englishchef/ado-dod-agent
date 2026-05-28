@@ -122,6 +122,81 @@ def test_generate_all_buckets_calls_model_exactly_three_times(monkeypatch: Monke
     assert len(client.prompts) == 3
 
 
+def test_selected_prompt_strategy_is_passed_to_prompt_builder(
+    monkeypatch: MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        "backend.app.services.llm.generator.get_settings",
+        lambda: Settings(AZURE_OPENAI_DEPLOYMENT="deployment"),
+    )
+    client = DummyClient([_bucket_1_response(), _bucket_2_response(), _bucket_3_response()])
+
+    outputs = generate_all_buckets(
+        42,
+        _evidence_bundle(),
+        client,  # type: ignore[arg-type]
+        prompt_strategy_selection={
+            "bucket_1_strategy": "bucket_1_low_evidence",
+            "bucket_2_strategy": "bucket_2_missing_tests",
+            "bucket_3_strategy": "bucket_3_high_risk",
+        },
+    )
+
+    rendered_prompts = "\n".join(client.prompts)
+    assert "Selected prompt strategy: bucket_1_low_evidence" in rendered_prompts
+    assert "Selected prompt strategy: bucket_2_missing_tests" in rendered_prompts
+    assert "Selected prompt strategy: bucket_3_high_risk" in rendered_prompts
+    assert outputs.model_metadata.prompt_strategies["bucket_3"] == "bucket_3_high_risk"
+
+
+def test_only_failed_bucket_is_retried(monkeypatch: MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        "backend.app.services.llm.generator.get_settings",
+        lambda: Settings(AZURE_OPENAI_DEPLOYMENT="deployment"),
+    )
+    client = DummyClient(
+        [
+            _bucket_1_response(),
+            {"target_fields": [], "model_confidence": 0.5},
+            _bucket_2_response(),
+            _bucket_3_response(),
+        ]
+    )
+    retries: list[tuple[str, int]] = []
+
+    outputs = generate_all_buckets(
+        42,
+        _evidence_bundle(),
+        client,  # type: ignore[arg-type]
+        max_retries_per_bucket=1,
+        on_bucket_retry=lambda bucket, attempt, _: retries.append((bucket, attempt)),
+    )
+
+    assert outputs.bucket_2.testing_performed
+    assert retries == [("bucket_2", 1)]
+    assert len(client.prompts) == 4
+    assert client.prompts[0].count("change_description") > 0
+    assert client.prompts[-1].count("backout_plan") > 0
+
+
+def test_bucket_failure_after_retry_raises_bucket_specific_error() -> None:
+    client = DummyClient(
+        [
+            _bucket_1_response(),
+            {"target_fields": [], "model_confidence": 0.5},
+            {"target_fields": [], "model_confidence": 0.5},
+        ]
+    )
+
+    with raises(LlmClientError, match="bucket_2 generation failed"):
+        generate_all_buckets(
+            42,
+            _evidence_bundle(),
+            client,  # type: ignore[arg-type]
+            max_retries_per_bucket=1,
+        )
+
+
 def test_generation_fails_clearly_when_output_does_not_match_schema() -> None:
     client = DummyClient([{"target_fields": [], "model_confidence": 0.5}])
 

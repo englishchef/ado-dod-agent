@@ -97,6 +97,7 @@ class LlmModelMetadata(LlmOutputBaseModel):
     api_version: str | None
     auth_mode: str
     prompt_versions: dict[str, str]
+    prompt_strategies: dict[str, str] = Field(default_factory=dict)
 
 
 class CombinedLlmOutputs(LlmOutputBaseModel):

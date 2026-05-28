@@ -1,0 +1,116 @@
+LangGraph Workflow
+===========================
+
+Detailed view
+-------------
+
+START
+  |
+  v
+validate_input
+  |
+  v
+route_after_validate_input
+  |---------------- failed ----------------|
+  |                                        v
+  |                                  persist_run_summary
+  |                                        |
+  |                                        v
+  |                                       END
+  |
+  | continue
+  v
+collect_raw_metadata
+  |
+  v
+route_after_collect_raw
+  |---------------- failed ----------------|
+  |                                        v
+  |                                  persist_run_summary
+  |                                        |
+  |                                        v
+  |                                       END
+  |
+  | continue
+  v
+normalize_canonical
+  |
+  v
+route_after_normalize
+  |---------------- failed ----------------|
+  |                                        v
+  |                                  persist_run_summary
+  |                                        |
+  |                                        v
+  |                                       END
+  |
+  | continue
+  v
+build_evidence_buckets
+  |
+  v
+route_after_evidence
+  |---------------- failed ----------------|
+  |                                        v
+  |                                  persist_run_summary
+  |                                        |
+  |                                        v
+  |                                       END
+  |
+  | continue
+  v
+generate_llm_outputs
+  |
+  v
+route_after_llm
+  |---------------- failed ----------------|
+  |                                        v
+  |                                  persist_run_summary
+  |                                        |
+  |                                        v
+  |                                       END
+  |
+  | continue
+  v
+validate_outputs
+  |
+  v
+assemble_run_result
+  |
+  v
+persist_run_summary
+  |
+  v
+END
+
+Compact view
+------------
+
+START
+  -> validate_input
+  -> [failed?] persist_run_summary -> END
+  -> collect_raw_metadata
+  -> [failed?] persist_run_summary -> END
+  -> normalize_canonical
+  -> [failed?] persist_run_summary -> END
+  -> build_evidence_buckets
+  -> [failed?] persist_run_summary -> END
+  -> generate_llm_outputs
+  -> [failed?] persist_run_summary -> END
+  -> validate_outputs
+  -> assemble_run_result
+  -> persist_run_summary
+  -> END
+
+Scope notes
+-----------
+
+- Basic failure/continue branching only.
+- No advanced prompt strategy routing.
+- No missing-test prompt routing.
+- No risk-tier routing.
+- No bucket-level branch generation.
+- No model fallback routing.
+- No historical knowledge fallback.
+- No ServiceNow writeback.
+- No Cosmos DB persistence.

@@ -1,0 +1,623 @@
+{
+  "build_id": 5,
+  "change_context": {
+    "change_summary_signals": [
+      "pipeline fix for python errors",
+      "pipeline and added pytest scripts",
+      "created azure pipelines yaml for build, test and deploy",
+      "Initial Commit"
+    ],
+    "commits": [
+      {
+        "author_email": "tejapv@gmail.com",
+        "author_name": "tejapv",
+        "authored_at": "2026-04-19T23:21:05Z",
+        "committed_at": "2026-04-19T23:21:05Z",
+        "committer_name": "tejapv",
+        "id": "60079d94f2148dcf3adafcb78e28471a98d58db6",
+        "message": "pipeline fix for python errors",
+        "source_ref": "raw.changes.value[0]",
+        "url": "https://dev.azure.com/tejapv/_apis/git/repositories/162ee1a9-c41d-4e7b-a129-c4ae6632aa38/commits/60079d94f2148dcf3adafcb78e28471a98d58db6"
+      },
+      {
+        "author_email": "tejapv@gmail.com",
+        "author_name": "tejapv",
+        "authored_at": "2026-04-19T23:13:36Z",
+        "committed_at": "2026-04-19T23:13:36Z",
+        "committer_name": "tejapv",
+        "id": "5afe986523e45ac71c0ecfa9eddbe2f1a5ca0e38",
+        "message": "pipeline and added pytest scripts",
+        "source_ref": "raw.changes.value[1]",
+        "url": "https://dev.azure.com/tejapv/_apis/git/repositories/162ee1a9-c41d-4e7b-a129-c4ae6632aa38/commits/5afe986523e45ac71c0ecfa9eddbe2f1a5ca0e38"
+      },
+      {
+        "author_email": "tejapv@gmail.com",
+        "author_name": "tejapv",
+        "authored_at": "2026-04-19T22:30:15Z",
+        "committed_at": "2026-04-19T22:30:15Z",
+        "committer_name": "tejapv",
+        "id": "11e5e50a07487072f37196a7137da72efed5024d",
+        "message": "created azure pipelines yaml for build, test and deploy",
+        "source_ref": "raw.changes.value[2]",
+        "url": "https://dev.azure.com/tejapv/_apis/git/repositories/162ee1a9-c41d-4e7b-a129-c4ae6632aa38/commits/11e5e50a07487072f37196a7137da72efed5024d"
+      },
+      {
+        "author_email": "tejapv@gmail.com",
+        "author_name": "tejapv",
+        "authored_at": "2026-04-19T22:11:38Z",
+        "committed_at": "2026-04-19T22:11:38Z",
+        "committer_name": "tejapv",
+        "id": "001331426c22bfa4ce15f726206d05b370a1606c",
+        "message": "Initial Commit",
+        "source_ref": "raw.changes.value[3]",
+        "url": "https://dev.azure.com/tejapv/_apis/git/repositories/162ee1a9-c41d-4e7b-a129-c4ae6632aa38/commits/001331426c22bfa4ce15f726206d05b370a1606c"
+      }
+    ],
+    "missing_change_context": [
+      "work_items_missing",
+      "pull_requests_missing_or_not_associated"
+    ],
+    "pull_requests": [],
+    "work_items": []
+  },
+  "execution_context": {
+    "artifacts": [
+      {
+        "download_url": "https://artprodcus3.artifacts.visualstudio.com/A8c87cb64-9b42-48ab-b7d3-265477b258b5/0a386ba7-1816-4100-9a99-b6e36fd6ad4a/_apis/artifact/cGlwZWxpbmVhcnRpZmFjdDovL3RlamFwdi9wcm9qZWN0SWQvMGEzODZiYTctMTgxNi00MTAwLTlhOTktYjZlMzZmZDZhZDRhL2J1aWxkSWQvNS9hcnRpZmFjdE5hbWUvZHJvcA2/content?format=zip",
+        "name": "drop",
+        "resource_type": "PipelineArtifact",
+        "source_ref": "raw.artifacts.value[0]",
+        "type": null
+      }
+    ],
+    "deployment_signals": [
+      "Checkout nfcudevopstest@main to s",
+      "Post-job: Checkout nfcudevopstest@main to s",
+      "RunTests",
+      "Run tests",
+      "Test",
+      "Deploy to Prod",
+      "DeployWebApp"
+    ],
+    "implementation_signals": [
+      "Prepare package",
+      "ArchiveFiles",
+      "PublishPipelineArtifact",
+      "Package",
+      "Report build status",
+      "Build",
+      "Finalize build",
+      "drop"
+    ],
+    "jobs": [
+      {
+        "duration_seconds": 271.41,
+        "finish_time": "2026-04-19T23:25:54.250000Z",
+        "id": "0c542db9-81f3-5910-a638-d40e1418769e",
+        "name": "RunTests",
+        "parent_id": "2eabdaa1-5148-5142-0f6d-3ed40aedd6b2",
+        "result": "succeeded",
+        "source_ref": "raw.timeline.records[7]",
+        "start_time": "2026-04-19T23:21:22.840000Z",
+        "state": "completed"
+      },
+      {
+        "duration_seconds": 276.51,
+        "finish_time": "2026-04-19T23:25:59.350000Z",
+        "id": "2eabdaa1-5148-5142-0f6d-3ed40aedd6b2",
+        "name": "RunTests",
+        "parent_id": "859b8d9a-8fd6-5a5c-6f5e-f84f1990894e",
+        "result": "succeeded",
+        "source_ref": "raw.timeline.records[10]",
+        "start_time": "2026-04-19T23:21:22.840000Z",
+        "state": "completed"
+      },
+      {
+        "duration_seconds": 32.26,
+        "finish_time": "2026-04-19T23:26:37.680000Z",
+        "id": "8038ede6-06cb-5441-d860-a4011e9e094b",
+        "name": "Package",
+        "parent_id": "3b9e458a-6ac1-545e-29aa-27f6dc7300e2",
+        "result": "succeeded",
+        "source_ref": "raw.timeline.records[18]",
+        "start_time": "2026-04-19T23:26:05.420000Z",
+        "state": "completed"
+      },
+      {
+        "duration_seconds": 35.69,
+        "finish_time": "2026-04-19T23:26:41.110000Z",
+        "id": "3b9e458a-6ac1-545e-29aa-27f6dc7300e2",
+        "name": "Package",
+        "parent_id": "6884a131-87da-5381-61f3-d7acc3b91d76",
+        "result": "succeeded",
+        "source_ref": "raw.timeline.records[21]",
+        "start_time": "2026-04-19T23:26:05.420000Z",
+        "state": "completed"
+      },
+      {
+        "duration_seconds": 213.496666,
+        "finish_time": "2026-04-19T23:30:40.076666Z",
+        "id": "c1b9fecb-18cf-5c94-eb61-2a45c96d5576",
+        "name": "DeployWebApp",
+        "parent_id": "14c511c1-ab3d-538b-287e-73b8b7937805",
+        "result": "succeeded",
+        "source_ref": "raw.timeline.records[24]",
+        "start_time": "2026-04-19T23:27:06.580000Z",
+        "state": "completed"
+      },
+      {
+        "duration_seconds": 217.583333,
+        "finish_time": "2026-04-19T23:30:44.163333Z",
+        "id": "14c511c1-ab3d-538b-287e-73b8b7937805",
+        "name": "DeployWebApp",
+        "parent_id": "d4a9a205-d52e-57fb-7b17-15a9d984af62",
+        "result": "succeeded",
+        "source_ref": "raw.timeline.records[27]",
+        "start_time": "2026-04-19T23:27:06.580000Z",
+        "state": "completed"
+      },
+      {
+        "duration_seconds": 0.343333,
+        "finish_time": "2026-04-19T23:30:45.036666Z",
+        "id": "acf23ef4-cae6-4180-a610-e6887e184837",
+        "name": "Finalize build",
+        "parent_id": null,
+        "result": "succeeded",
+        "source_ref": "raw.timeline.records[33]",
+        "start_time": "2026-04-19T23:30:44.693333Z",
+        "state": "completed"
+      }
+    ],
+    "missing_execution_context": [],
+    "stages": [
+      {
+        "duration_seconds": 276.623333,
+        "finish_time": "2026-04-19T23:25:59.463333Z",
+        "id": "859b8d9a-8fd6-5a5c-6f5e-f84f1990894e",
+        "name": "Test",
+        "result": "succeeded",
+        "source_ref": "raw.timeline.records[11]",
+        "start_time": "2026-04-19T23:21:22.840000Z",
+        "state": "completed"
+      },
+      {
+        "duration_seconds": 217.68,
+        "finish_time": "2026-04-19T23:30:44.260000Z",
+        "id": "d4a9a205-d52e-57fb-7b17-15a9d984af62",
+        "name": "Deploy to Prod",
+        "result": "succeeded",
+        "source_ref": "raw.timeline.records[22]",
+        "start_time": "2026-04-19T23:27:06.580000Z",
+        "state": "completed"
+      },
+      {
+        "duration_seconds": 35.773333,
+        "finish_time": "2026-04-19T23:26:41.193333Z",
+        "id": "6884a131-87da-5381-61f3-d7acc3b91d76",
+        "name": "Build",
+        "result": "succeeded",
+        "source_ref": "raw.timeline.records[32]",
+        "start_time": "2026-04-19T23:26:05.420000Z",
+        "state": "completed"
+      }
+    ],
+    "tasks": [
+      {
+        "duration_seconds": 0.0,
+        "finish_time": "2026-04-19T23:21:16.143333Z",
+        "id": "3b30d003-93ee-5526-9785-eabc25370ee2",
+        "log_url": null,
+        "name": "Checkpoint",
+        "parent_id": "859b8d9a-8fd6-5a5c-6f5e-f84f1990894e",
+        "result": "succeeded",
+        "source_ref": "raw.timeline.records[0]",
+        "start_time": "2026-04-19T23:21:16.143333Z",
+        "state": "completed",
+        "type": "Checkpoint"
+      },
+      {
+        "duration_seconds": 0.963334,
+        "finish_time": "2026-04-19T23:21:24.460000Z",
+        "id": "b70d4677-b926-41f1-bc20-322eff215cf3",
+        "log_url": "https://dev.azure.com/tejapv/0a386ba7-1816-4100-9a99-b6e36fd6ad4a/_apis/build/builds/5/logs/4",
+        "name": "Initialize job",
+        "parent_id": "0c542db9-81f3-5910-a638-d40e1418769e",
+        "result": "succeeded",
+        "source_ref": "raw.timeline.records[1]",
+        "start_time": "2026-04-19T23:21:23.496666Z",
+        "state": "completed",
+        "type": "Task"
+      },
+      {
+        "duration_seconds": 9.853334,
+        "finish_time": "2026-04-19T23:21:34.360000Z",
+        "id": "f188cc7b-61d7-5e97-e132-a22fd3de4781",
+        "log_url": "https://dev.azure.com/tejapv/0a386ba7-1816-4100-9a99-b6e36fd6ad4a/_apis/build/builds/5/logs/5",
+        "name": "Checkout nfcudevopstest@main to s",
+        "parent_id": "0c542db9-81f3-5910-a638-d40e1418769e",
+        "result": "succeeded",
+        "source_ref": "raw.timeline.records[2]",
+        "start_time": "2026-04-19T23:21:24.506666Z",
+        "state": "completed",
+        "type": "Task"
+      },
+      {
+        "duration_seconds": 5.833333,
+        "finish_time": "2026-04-19T23:21:40.196666Z",
+        "id": "b6d89540-a637-59cc-d0e0-da4088691136",
+        "log_url": "https://dev.azure.com/tejapv/0a386ba7-1816-4100-9a99-b6e36fd6ad4a/_apis/build/builds/5/logs/6",
+        "name": "Resolve Python",
+        "parent_id": "0c542db9-81f3-5910-a638-d40e1418769e",
+        "result": "succeeded",
+        "source_ref": "raw.timeline.records[3]",
+        "start_time": "2026-04-19T23:21:34.363333Z",
+        "state": "completed",
+        "type": "Task"
+      },
+      {
+        "duration_seconds": 30.453334,
+        "finish_time": "2026-04-19T23:22:10.650000Z",
+        "id": "9c583e67-efc1-5be8-64ce-66fc1eb7d738",
+        "log_url": "https://dev.azure.com/tejapv/0a386ba7-1816-4100-9a99-b6e36fd6ad4a/_apis/build/builds/5/logs/7",
+        "name": "Create CI venv",
+        "parent_id": "0c542db9-81f3-5910-a638-d40e1418769e",
+        "result": "succeeded",
+        "source_ref": "raw.timeline.records[4]",
+        "start_time": "2026-04-19T23:21:40.196666Z",
+        "state": "completed",
+        "type": "Task"
+      },
+      {
+        "duration_seconds": 204.393334,
+        "finish_time": "2026-04-19T23:25:35.060000Z",
+        "id": "97ad62a2-10d0-56bd-9e3b-3544086a2795",
+        "log_url": "https://dev.azure.com/tejapv/0a386ba7-1816-4100-9a99-b6e36fd6ad4a/_apis/build/builds/5/logs/8",
+        "name": "Install dependencies",
+        "parent_id": "0c542db9-81f3-5910-a638-d40e1418769e",
+        "result": "succeeded",
+        "source_ref": "raw.timeline.records[5]",
+        "start_time": "2026-04-19T23:22:10.666666Z",
+        "state": "completed",
+        "type": "Task"
+      },
+      {
+        "duration_seconds": 0.82,
+        "finish_time": "2026-04-19T23:25:54.190000Z",
+        "id": "e60cd545-73c1-46d0-b854-85436ee70597",
+        "log_url": "https://dev.azure.com/tejapv/0a386ba7-1816-4100-9a99-b6e36fd6ad4a/_apis/build/builds/5/logs/10",
+        "name": "Post-job: Checkout nfcudevopstest@main to s",
+        "parent_id": "0c542db9-81f3-5910-a638-d40e1418769e",
+        "result": "succeeded",
+        "source_ref": "raw.timeline.records[6]",
+        "start_time": "2026-04-19T23:25:53.370000Z",
+        "state": "completed",
+        "type": "Task"
+      },
+      {
+        "duration_seconds": 18.31,
+        "finish_time": "2026-04-19T23:25:53.370000Z",
+        "id": "3240cae7-5844-58e8-05fc-e2584d8656c2",
+        "log_url": "https://dev.azure.com/tejapv/0a386ba7-1816-4100-9a99-b6e36fd6ad4a/_apis/build/builds/5/logs/9",
+        "name": "Run tests",
+        "parent_id": "0c542db9-81f3-5910-a638-d40e1418769e",
+        "result": "succeeded",
+        "source_ref": "raw.timeline.records[8]",
+        "start_time": "2026-04-19T23:25:35.060000Z",
+        "state": "completed",
+        "type": "Task"
+      },
+      {
+        "duration_seconds": 0.04,
+        "finish_time": "2026-04-19T23:25:54.240000Z",
+        "id": "d6205a43-e711-475f-ace4-eb65082408d3",
+        "log_url": "https://dev.azure.com/tejapv/0a386ba7-1816-4100-9a99-b6e36fd6ad4a/_apis/build/builds/5/logs/11",
+        "name": "Finalize Job",
+        "parent_id": "0c542db9-81f3-5910-a638-d40e1418769e",
+        "result": "succeeded",
+        "source_ref": "raw.timeline.records[9]",
+        "start_time": "2026-04-19T23:25:54.200000Z",
+        "state": "completed",
+        "type": "Task"
+      },
+      {
+        "duration_seconds": 0.0,
+        "finish_time": "2026-04-19T23:26:00.206666Z",
+        "id": "4a5c45ff-6020-52b3-631c-7305c4802887",
+        "log_url": null,
+        "name": "Checkpoint",
+        "parent_id": "6884a131-87da-5381-61f3-d7acc3b91d76",
+        "result": "succeeded",
+        "source_ref": "raw.timeline.records[12]",
+        "start_time": "2026-04-19T23:26:00.206666Z",
+        "state": "completed",
+        "type": "Checkpoint"
+      },
+      {
+        "duration_seconds": 8.633334,
+        "finish_time": "2026-04-19T23:26:14.390000Z",
+        "id": "3d73e5c7-b5da-443a-b5bd-7a0fc15819e0",
+        "log_url": "https://dev.azure.com/tejapv/0a386ba7-1816-4100-9a99-b6e36fd6ad4a/_apis/build/builds/5/logs/14",
+        "name": "Initialize job",
+        "parent_id": "8038ede6-06cb-5441-d860-a4011e9e094b",
+        "result": "succeeded",
+        "source_ref": "raw.timeline.records[13]",
+        "start_time": "2026-04-19T23:26:05.756666Z",
+        "state": "completed",
+        "type": "Task"
+      },
+      {
+        "duration_seconds": 6.666667,
+        "finish_time": "2026-04-19T23:26:21.083333Z",
+        "id": "6ca8c230-d30f-5e39-bc1c-506c6daf9815",
+        "log_url": "https://dev.azure.com/tejapv/0a386ba7-1816-4100-9a99-b6e36fd6ad4a/_apis/build/builds/5/logs/15",
+        "name": "Checkout nfcudevopstest@main to s",
+        "parent_id": "8038ede6-06cb-5441-d860-a4011e9e094b",
+        "result": "succeeded",
+        "source_ref": "raw.timeline.records[14]",
+        "start_time": "2026-04-19T23:26:14.416666Z",
+        "state": "completed",
+        "type": "Task"
+      },
+      {
+        "duration_seconds": 5.943334,
+        "finish_time": "2026-04-19T23:26:27.030000Z",
+        "id": "f92238a0-efd5-507a-fdd0-84dee5537000",
+        "log_url": "https://dev.azure.com/tejapv/0a386ba7-1816-4100-9a99-b6e36fd6ad4a/_apis/build/builds/5/logs/16",
+        "name": "Prepare package",
+        "parent_id": "8038ede6-06cb-5441-d860-a4011e9e094b",
+        "result": "succeeded",
+        "source_ref": "raw.timeline.records[15]",
+        "start_time": "2026-04-19T23:26:21.086666Z",
+        "state": "completed",
+        "type": "Task"
+      },
+      {
+        "duration_seconds": 2.786666,
+        "finish_time": "2026-04-19T23:26:29.816666Z",
+        "id": "1294c6e2-c6e2-5822-45fd-9cf4c2454b78",
+        "log_url": "https://dev.azure.com/tejapv/0a386ba7-1816-4100-9a99-b6e36fd6ad4a/_apis/build/builds/5/logs/17",
+        "name": "ArchiveFiles",
+        "parent_id": "8038ede6-06cb-5441-d860-a4011e9e094b",
+        "result": "succeeded",
+        "source_ref": "raw.timeline.records[16]",
+        "start_time": "2026-04-19T23:26:27.030000Z",
+        "state": "completed",
+        "type": "Task"
+      },
+      {
+        "duration_seconds": 6.9,
+        "finish_time": "2026-04-19T23:26:36.716666Z",
+        "id": "d5111747-d06f-53d9-432d-d3d04a29d420",
+        "log_url": "https://dev.azure.com/tejapv/0a386ba7-1816-4100-9a99-b6e36fd6ad4a/_apis/build/builds/5/logs/18",
+        "name": "PublishPipelineArtifact",
+        "parent_id": "8038ede6-06cb-5441-d860-a4011e9e094b",
+        "result": "succeeded",
+        "source_ref": "raw.timeline.records[17]",
+        "start_time": "2026-04-19T23:26:29.816666Z",
+        "state": "completed",
+        "type": "Task"
+      },
+      {
+        "duration_seconds": 0.053333,
+        "finish_time": "2026-04-19T23:26:37.673333Z",
+        "id": "292d0a70-f702-4d58-8450-f3418029b3c0",
+        "log_url": "https://dev.azure.com/tejapv/0a386ba7-1816-4100-9a99-b6e36fd6ad4a/_apis/build/builds/5/logs/20",
+        "name": "Finalize Job",
+        "parent_id": "8038ede6-06cb-5441-d860-a4011e9e094b",
+        "result": "succeeded",
+        "source_ref": "raw.timeline.records[19]",
+        "start_time": "2026-04-19T23:26:37.620000Z",
+        "state": "completed",
+        "type": "Task"
+      },
+      {
+        "duration_seconds": 0.893333,
+        "finish_time": "2026-04-19T23:26:37.613333Z",
+        "id": "200ff264-5191-4033-97ab-fe5ca63509ea",
+        "log_url": "https://dev.azure.com/tejapv/0a386ba7-1816-4100-9a99-b6e36fd6ad4a/_apis/build/builds/5/logs/19",
+        "name": "Post-job: Checkout nfcudevopstest@main to s",
+        "parent_id": "8038ede6-06cb-5441-d860-a4011e9e094b",
+        "result": "succeeded",
+        "source_ref": "raw.timeline.records[20]",
+        "start_time": "2026-04-19T23:26:36.720000Z",
+        "state": "completed",
+        "type": "Task"
+      },
+      {
+        "duration_seconds": 6.013333,
+        "finish_time": "2026-04-19T23:29:04.726666Z",
+        "id": "53b66059-8449-5ea2-2319-1ab2b2f8867d",
+        "log_url": "https://dev.azure.com/tejapv/0a386ba7-1816-4100-9a99-b6e36fd6ad4a/_apis/build/builds/5/logs/23",
+        "name": "Download",
+        "parent_id": "c1b9fecb-18cf-5c94-eb61-2a45c96d5576",
+        "result": "succeeded",
+        "source_ref": "raw.timeline.records[23]",
+        "start_time": "2026-04-19T23:28:58.713333Z",
+        "state": "completed",
+        "type": "Task"
+      },
+      {
+        "duration_seconds": 111.843334,
+        "finish_time": "2026-04-19T23:28:58.690000Z",
+        "id": "e2f2afd1-25fa-4eff-89d3-3f29515e29f9",
+        "log_url": "https://dev.azure.com/tejapv/0a386ba7-1816-4100-9a99-b6e36fd6ad4a/_apis/build/builds/5/logs/22",
+        "name": "Initialize job",
+        "parent_id": "c1b9fecb-18cf-5c94-eb61-2a45c96d5576",
+        "result": "succeeded",
+        "source_ref": "raw.timeline.records[25]",
+        "start_time": "2026-04-19T23:27:06.846666Z",
+        "state": "completed",
+        "type": "Task"
+      },
+      {
+        "duration_seconds": 19.98,
+        "finish_time": "2026-04-19T23:27:01.953333Z",
+        "id": "e5277def-9fe4-5246-e5b7-51b6ab51f23a",
+        "log_url": null,
+        "name": "Checkpoint",
+        "parent_id": "d4a9a205-d52e-57fb-7b17-15a9d984af62",
+        "result": "succeeded",
+        "source_ref": "raw.timeline.records[26]",
+        "start_time": "2026-04-19T23:26:41.973333Z",
+        "state": "completed",
+        "type": "Checkpoint"
+      },
+      {
+        "duration_seconds": 95.283333,
+        "finish_time": "2026-04-19T23:30:40.013333Z",
+        "id": "290f70cc-0d09-5529-e51a-838df42b3895",
+        "log_url": "https://dev.azure.com/tejapv/0a386ba7-1816-4100-9a99-b6e36fd6ad4a/_apis/build/builds/5/logs/24",
+        "name": "AzureWebApp",
+        "parent_id": "c1b9fecb-18cf-5c94-eb61-2a45c96d5576",
+        "result": "succeeded",
+        "source_ref": "raw.timeline.records[28]",
+        "start_time": "2026-04-19T23:29:04.730000Z",
+        "state": "completed",
+        "type": "Task"
+      },
+      {
+        "duration_seconds": 0.036666,
+        "finish_time": "2026-04-19T23:30:40.066666Z",
+        "id": "67804344-ff34-4fed-a2f1-88627c03fbc5",
+        "log_url": "https://dev.azure.com/tejapv/0a386ba7-1816-4100-9a99-b6e36fd6ad4a/_apis/build/builds/5/logs/25",
+        "name": "Finalize Job",
+        "parent_id": "c1b9fecb-18cf-5c94-eb61-2a45c96d5576",
+        "result": "succeeded",
+        "source_ref": "raw.timeline.records[29]",
+        "start_time": "2026-04-19T23:30:40.030000Z",
+        "state": "completed",
+        "type": "Task"
+      },
+      {
+        "duration_seconds": 19.863333,
+        "finish_time": "2026-04-19T23:27:01.813333Z",
+        "id": "a6bc6598-864d-4616-9608-98d62f963da1",
+        "log_url": null,
+        "name": "Checkpoint.Authorization",
+        "parent_id": "e5277def-9fe4-5246-e5b7-51b6ab51f23a",
+        "result": "succeeded",
+        "source_ref": "raw.timeline.records[30]",
+        "start_time": "2026-04-19T23:26:41.950000Z",
+        "state": "completed",
+        "type": "Checkpoint.Authorization"
+      },
+      {
+        "duration_seconds": 0.273333,
+        "finish_time": "2026-04-19T23:30:45.003333Z",
+        "id": "78db2542-c627-4140-8a7a-d06178fff4e4",
+        "log_url": "https://dev.azure.com/tejapv/0a386ba7-1816-4100-9a99-b6e36fd6ad4a/_apis/build/builds/5/logs/27",
+        "name": "Report build status",
+        "parent_id": "acf23ef4-cae6-4180-a610-e6887e184837",
+        "result": "succeeded",
+        "source_ref": "raw.timeline.records[31]",
+        "start_time": "2026-04-19T23:30:44.730000Z",
+        "state": "completed",
+        "type": "Task"
+      }
+    ],
+    "validation_signals": [
+      "Checkpoint",
+      "Checkout nfcudevopstest@main to s",
+      "Post-job: Checkout nfcudevopstest@main to s",
+      "RunTests",
+      "Run tests",
+      "Test",
+      "Checkpoint.Authorization"
+    ]
+  },
+  "generated_at": "2026-05-02T21:53:09.121331Z",
+  "normalization_metadata": {
+    "missing_sections": [],
+    "normalized_sections": [
+      "run_context",
+      "change_context",
+      "execution_context",
+      "quality_context",
+      "risk_context"
+    ],
+    "raw_collection_status": "completed",
+    "raw_collector_errors": [],
+    "warnings": []
+  },
+  "organization": "tejapv",
+  "project": "nfcudevopstest",
+  "quality_context": {
+    "failed_tests": [],
+    "missing_quality_context": [
+      "test_runs_missing",
+      "test_results_missing"
+    ],
+    "quality_signals": [
+      "total_tests=0",
+      "passed_tests=0",
+      "failed_tests=0",
+      "skipped_tests=0",
+      "test_runs_missing",
+      "test_results_missing"
+    ],
+    "scan_summary": {
+      "code_quality_status": null,
+      "dependency_status": null,
+      "missing_scan_context": [
+        "scan_tools_not_collected_in_phase_3"
+      ],
+      "scan_signals": [],
+      "security_status": null
+    },
+    "test_runs": [],
+    "test_summary": {
+      "failed_tests": 0,
+      "pass_rate": null,
+      "passed_tests": 0,
+      "skipped_tests": 0,
+      "total_runs": 0,
+      "total_tests": 0
+    },
+    "warning_tests": []
+  },
+  "risk_context": {
+    "config_change_detected": true,
+    "database_change_detected": false,
+    "dependency_change_detected": true,
+    "feature_flag_change_detected": false,
+    "impacted_components": [],
+    "infrastructure_change_detected": false,
+    "missing_risk_context": [],
+    "risk_signals": [
+      "missing_test_context",
+      "config_change_detected",
+      "dependency_change_detected"
+    ],
+    "rollback_indicators": [
+      "60079d94f2148dcf3adafcb78e28471a98d58db6",
+      "20260419.5",
+      "drop",
+      "Checkout nfcudevopstest@main to s",
+      "Post-job: Checkout nfcudevopstest@main to s",
+      "Run tests"
+    ]
+  },
+  "run_context": {
+    "build_id": 5,
+    "build_number": "20260419.5",
+    "finish_time": "2026-04-19T23:30:44.615719Z",
+    "pipeline_id": 1,
+    "pipeline_name": "nfcudevopstest",
+    "queue_time": "2026-04-19T23:21:15.077947Z",
+    "reason": "individualCI",
+    "repository_id": "162ee1a9-c41d-4e7b-a129-c4ae6632aa38",
+    "repository_name": "nfcudevopstest",
+    "repository_type": "TfsGit",
+    "requested_by": "Microsoft.VisualStudio.Services.TFS",
+    "requested_for": "Saiteja Perumbuduru Venkata",
+    "result": "succeeded",
+    "source_branch": "refs/heads/main",
+    "source_version": "60079d94f2148dcf3adafcb78e28471a98d58db6",
+    "start_time": "2026-04-19T23:21:17.457125Z",
+    "status": "completed",
+    "url": "https://dev.azure.com/tejapv/0a386ba7-1816-4100-9a99-b6e36fd6ad4a/_apis/build/Builds/5",
+    "web_url": "https://dev.azure.com/tejapv/0a386ba7-1816-4100-9a99-b6e36fd6ad4a/_build/results?buildId=5"
+  },
+  "schema_version": "1.0",
+  "source_raw_bundle_path": "data\\raw\\5\\raw_bundle.json"
+}

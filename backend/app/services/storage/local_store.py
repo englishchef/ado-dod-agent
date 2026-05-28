@@ -109,6 +109,26 @@ class LocalJsonStore:
 
         return self.save_output_json(build_id, "confidence.json", payload)
 
+    def run_summary_path(self, build_id: int) -> str:
+        """Return canonical local path for a Phase 7A run summary."""
+
+        return self.output_path(build_id, "run_summary.json")
+
+    def routing_decisions_path(self, build_id: int) -> str:
+        """Return canonical local path for a Phase 7B routing decisions artifact."""
+
+        return self.output_path(build_id, "routing_decisions.json")
+
+    def save_routing_decisions_json(self, build_id: int, payload: Any) -> str:
+        """Save the Phase 7B routing decisions artifact."""
+
+        return self.save_output_json(build_id, "routing_decisions.json", payload)
+
+    def save_run_summary_json(self, build_id: int, payload: Any) -> str:
+        """Save the Phase 7A orchestration run summary artifact."""
+
+        return self.save_output_json(build_id, "run_summary.json", payload)
+
     def load_raw_bundle(self, build_id: int) -> dict[str, Any]:
         """Load raw bundle payload for a build id."""
 
@@ -137,5 +157,17 @@ class LocalJsonStore:
         """Load Phase 5B combined LLM outputs for a build id."""
 
         payload = self.load_json(f"output/{build_id}/llm_outputs.json")
+        return payload if isinstance(payload, dict) else {}
+
+    def load_run_summary(self, build_id: int) -> dict[str, Any]:
+        """Load Phase 7A run summary payload for a build id."""
+
+        payload = self.load_json(f"output/{build_id}/run_summary.json")
+        return payload if isinstance(payload, dict) else {}
+
+    def load_routing_decisions(self, build_id: int) -> dict[str, Any]:
+        """Load Phase 7B routing decisions payload for a build id."""
+
+        payload = self.load_json(f"output/{build_id}/routing_decisions.json")
         return payload if isinstance(payload, dict) else {}
 

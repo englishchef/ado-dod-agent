@@ -1,0 +1,25 @@
+{
+  "backout_plan": "If issues are detected after deployment, initiate an immediate rollback to the last known-good build for pipeline nfcudevopstest. Use the previously validated artifact stream and build history to redeploy the prior stable version before build 20260419.5, as the current deployment is based on build_id 5, build_number 20260419.5, source_version 60079d94f2148dcf3adafcb78e28471a98d58db6, and artifact 'drop' (raw.artifacts.value[0]). Coordinate with release operations to identify and redeploy the last successful and stable release artifact from the artifact repository, ensuring configuration and dependency changes introduced in this release are fully reverted. Monitor application health, logs, and key service indicators during and after rollback to confirm stability. There is no explicit evidence of a defined rollback task or tested rollback procedure, so rollback steps should be executed cautiously and validated in a controlled manner before broad rollout where feasible.",
+  "evidence_used": [
+    "raw.artifacts.value[0]"
+  ],
+  "generation_notes": [
+    "Backout plan is derived from artifact and build metadata, with conservative assumptions due to lack of explicit rollback tasks.",
+    "Risk and impact analysis is primarily based on risk_flags, risk_signals, and the absence of test and impact evidence.",
+    "No claims were made about tests passing or rollback being tested because no such evidence was provided."
+  ],
+  "missing_information": [
+    "No explicit rollback or backout task details were provided.",
+    "No explicit evidence that rollback procedures were tested.",
+    "No test results or test coverage details were provided.",
+    "No explicit list of impacted applications, services, or components was provided.",
+    "No environment-specific deployment details (e.g., production vs. non-production) were provided.",
+    "No explicit prior known-good build identifier was provided."
+  ],
+  "model_confidence": 0.73,
+  "risk_impact_analysis": "This change deploys artifact 'drop' from pipeline nfcudevopstest, build 20260419.5, source_version 60079d94f2148dcf3adafcb78e28471a98d58db6 (raw.artifacts.value[0], service_context). Risk signals indicate configuration changes and dependency changes are present (config_change_detected, dependency_change_detected), which can introduce behavioral differences, integration issues, or environment-specific failures if not fully validated. No database or infrastructure changes were detected, and no evidence of feature flag changes was found, but this does not eliminate those risks entirely; it only indicates no such evidence was detected. There is no detected list of impacted components and no test context is available, creating uncertainty about functional, regression, and performance coverage. The absence of explicit test results and impacted-component mapping increases the risk that defects or compatibility issues may surface post-deployment, especially around configuration-driven behavior and external dependencies. Overall risk should be considered moderate with elevated uncertainty due to missing test evidence and limited impact detail, and additional verification and post-deployment monitoring are recommended.",
+  "target_fields": [
+    "backout_plan",
+    "risk_impact_analysis"
+  ]
+}

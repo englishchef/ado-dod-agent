@@ -123,3 +123,25 @@ def test_local_store_phase_6_helpers(tmp_path: Path) -> None:
     assert payload_path.endswith("service_now_payload.json")
     assert confidence_path.endswith("confidence.json")
 
+
+def test_local_store_run_summary_helpers(tmp_path: Path) -> None:
+    """Store should support Phase 7A run summary helpers."""
+
+    store = LocalJsonStore(Settings(DATA_DIR=tmp_path))
+    path = store.save_run_summary_json(92, {"status": "completed"})
+
+    assert store.run_summary_path(92).endswith("run_summary.json")
+    assert path.endswith("run_summary.json")
+    assert store.load_run_summary(92)["status"] == "completed"
+
+
+def test_local_store_routing_decisions_helpers(tmp_path: Path) -> None:
+    """Store should support Phase 7B routing decisions helpers."""
+
+    store = LocalJsonStore(Settings(DATA_DIR=tmp_path))
+    path = store.save_routing_decisions_json(93, {"decisions": []})
+
+    assert store.routing_decisions_path(93).endswith("routing_decisions.json")
+    assert path.endswith("routing_decisions.json")
+    assert store.load_routing_decisions(93)["decisions"] == []
+

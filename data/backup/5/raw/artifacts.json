@@ -1,0 +1,22 @@
+{
+  "count": 1,
+  "value": [
+    {
+      "id": 1,
+      "name": "drop",
+      "resource": {
+        "data": "23D3E3241380E1FB28226573C70877A3B241763325E1AFB97DE04F57E258CD3001",
+        "downloadUrl": "https://artprodcus3.artifacts.visualstudio.com/A8c87cb64-9b42-48ab-b7d3-265477b258b5/0a386ba7-1816-4100-9a99-b6e36fd6ad4a/_apis/artifact/cGlwZWxpbmVhcnRpZmFjdDovL3RlamFwdi9wcm9qZWN0SWQvMGEzODZiYTctMTgxNi00MTAwLTlhOTktYjZlMzZmZDZhZDRhL2J1aWxkSWQvNS9hcnRpZmFjdE5hbWUvZHJvcA2/content?format=zip",
+        "properties": {
+          "DomainId": "0",
+          "HashType": "DEDUP1024K",
+          "RootId": "52655613075A446D1A21C3AFA1E49A3318C5999D0CFE26136B4BCDB2AED0F98202",
+          "artifactsize": "50198"
+        },
+        "type": "PipelineArtifact",
+        "url": "https://dev.azure.com/tejapv/0a386ba7-1816-4100-9a99-b6e36fd6ad4a/_apis/build/builds/5/artifacts?artifactName=drop&api-version=7.1"
+      },
+      "source": "8038ede6-06cb-5441-d860-a4011e9e094b"
+    }
+  ]
+}

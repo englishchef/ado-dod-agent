@@ -28,6 +28,7 @@ from backend.app.services.normalizers.canonical import (
     build_canonical_summary,
     normalize_raw_bundle,
 )
+from backend.app.services.orchestration.dod_run_service import run_dod_agent
 from backend.app.services.storage.local_store import LocalJsonStore
 from backend.app.utils.config import get_settings
 
@@ -51,6 +52,14 @@ async def generate_run(_: GenerateRunInput) -> RunGenerationResponse:
             "workflow is not implemented yet."
         ),
     )
+
+
+@router.post("/orchestrate")
+def orchestrate_run(request: GenerateRunInput) -> dict[str, Any]:
+    """Run Phase 7A LangGraph orchestration without ServiceNow writeback."""
+
+    summary = run_dod_agent(request.model_dump())
+    return summary.model_dump(mode="json")
 
 
 @router.post("/collect-raw", response_model=RawCollectionResult)

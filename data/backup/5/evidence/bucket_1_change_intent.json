@@ -1,0 +1,68 @@
+{
+  "change_summary_signals": [
+    "pipeline fix for python errors",
+    "pipeline and added pytest scripts",
+    "created azure pipelines yaml for build, test and deploy",
+    "Initial Commit"
+  ],
+  "commit_evidence": [
+    {
+      "author_name": "tejapv",
+      "authored_at": "2026-04-19T22:30:15Z",
+      "id": "11e5e50a07487072f37196a7137da72efed5024d",
+      "message": "created azure pipelines yaml for build, test and deploy",
+      "source_ref": "raw.changes.value[2]"
+    },
+    {
+      "author_name": "tejapv",
+      "authored_at": "2026-04-19T23:13:36Z",
+      "id": "5afe986523e45ac71c0ecfa9eddbe2f1a5ca0e38",
+      "message": "pipeline and added pytest scripts",
+      "source_ref": "raw.changes.value[1]"
+    },
+    {
+      "author_name": "tejapv",
+      "authored_at": "2026-04-19T23:21:05Z",
+      "id": "60079d94f2148dcf3adafcb78e28471a98d58db6",
+      "message": "pipeline fix for python errors",
+      "source_ref": "raw.changes.value[0]"
+    },
+    {
+      "author_name": "tejapv",
+      "authored_at": "2026-04-19T22:11:38Z",
+      "id": "001331426c22bfa4ce15f726206d05b370a1606c",
+      "message": "Initial Commit",
+      "source_ref": "raw.changes.value[3]"
+    }
+  ],
+  "evidence_gaps": [
+    "work_items_missing",
+    "pull_requests_missing_or_not_associated",
+    "no work items found",
+    "no PR metadata found"
+  ],
+  "evidence_references": [
+    "raw.changes.value[2]",
+    "raw.changes.value[1]",
+    "raw.changes.value[0]",
+    "raw.changes.value[3]"
+  ],
+  "pull_request_evidence": [],
+  "service_context": {
+    "build_id": 5,
+    "build_number": "20260419.5",
+    "pipeline_name": "nfcudevopstest",
+    "repository_name": "nfcudevopstest",
+    "requested_by": "Microsoft.VisualStudio.Services.TFS",
+    "result": "succeeded",
+    "source_branch": "refs/heads/main",
+    "source_version": "60079d94f2148dcf3adafcb78e28471a98d58db6",
+    "status": "completed"
+  },
+  "target_fields": [
+    "change_description",
+    "short_change_description",
+    "justification"
+  ],
+  "work_item_evidence": []
+}

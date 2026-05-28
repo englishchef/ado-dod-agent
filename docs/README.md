@@ -10,11 +10,17 @@ Python backend for collecting Azure DevOps build metadata and preparing Definiti
 - Phase 5A: local Foundry/Azure OpenAI keyless model access smoke validation
 - Phase 5B: ServiceNow field draft generation from evidence buckets
 - Phase 6: validation, confidence scoring, and ServiceNow-ready payload assembly
+- Phase 7A: LangGraph orchestration over Phases 2-6 with basic branching
+- Phase 7B: deterministic advanced routing for evidence quality, risk tier, prompt strategy,
+  bucket retry, and confidence-based final status
 
 Out of scope:
 - ServiceNow writeback
-- LangGraph orchestration
+- production ServiceNow/API writeback integration
 - Cosmos DB
+- model fallback
+- historical knowledge fallback
+- parallel generation
 
 ## Backend Layout
 ```text
@@ -88,6 +94,7 @@ No PATs are used.
 - `POST /api/v1/runs/collect-raw`
 - `POST /api/v1/runs/normalize`
 - `POST /api/v1/runs/build-evidence`
+- `POST /api/v1/runs/orchestrate`
 
 ## Phase 2 Raw Collection
 Input:
@@ -300,6 +307,78 @@ Canonical document includes:
 
 Partial raw data is supported. Missing optional sections are represented with explicit `missing_*` lists and metadata warnings.
 
+## Phase 7A LangGraph Orchestration
+Phase 7A runs one end-to-end LangGraph workflow over the existing Phase 2 through Phase 6 services. It collects raw Azure DevOps metadata, normalizes canonical JSON, builds evidence buckets, generates LLM outputs, validates and scores them, assembles the flat ServiceNow-ready payload, and persists a run summary.
+
+Input:
+- `organization`
+- `project`
+- `build_id`
+- `mode` (default `local`)
+
+CLI:
+```powershell
+python scripts/run_dod_agent.py --build-id <BUILD_ID>
+```
+
+Make:
+```powershell
+make run-agent BUILD_ID=<BUILD_ID>
+```
+
+Outputs:
+- `data/raw/{build_id}/raw_bundle.json`
+- `data/normalized/{build_id}/canonical.json`
+- `data/evidence/{build_id}/evidence_bundle.json`
+- `data/output/{build_id}/llm_outputs.json`
+- `data/output/{build_id}/validated_output.json`
+- `data/output/{build_id}/service_now_payload.json`
+- `data/output/{build_id}/confidence.json`
+- `data/output/{build_id}/run_summary.json`
+
+Status meanings:
+- `completed`: run finished without warnings and confidence met the threshold.
+- `completed_with_warnings`: run finished and produced a payload, but non-blocking warnings were captured.
+- `needs_review`: run produced a payload, but validation errors or low confidence require review.
+- `failed`: a hard failure stopped the workflow before a usable payload was produced.
+
+Phase 7A scope:
+- Basic failure/continue branching only.
+- No ServiceNow writeback.
+- No Cosmos DB persistence.
+- No model fallback.
+- No parallel bucket generation.
+- No historical knowledge fallback.
+- Phase 7B adds deterministic advanced routing while keeping these writeback/storage exclusions.
+
+## Phase 7B Advanced Routing
+Phase 7B adds deterministic routing decisions on top of the Phase 7A LangGraph workflow while preserving the same final 8-field ServiceNow payload schema.
+
+New artifact:
+- `data/output/{build_id}/routing_decisions.json`
+
+Routing features:
+- Evidence quality assessment for all three evidence buckets.
+- Prompt strategy selection.
+- Missing-test prompt routing for Bucket 2.
+- Conservative rollback and high-risk prompt routing for Bucket 3.
+- Risk-tier assessment (`low`, `medium`, `high`).
+- Bucket-level LLM retry without regenerating successful buckets.
+- Confidence-based final status routing, including a higher threshold for high-risk changes.
+
+Status meanings:
+- `completed`: run finished without warnings and confidence met the applicable threshold.
+- `completed_with_warnings`: run finished and produced a payload, but non-blocking warnings were captured.
+- `needs_review`: run produced a payload, but validation, risk, or confidence requires review.
+- `failed`: a hard failure stopped the workflow before a usable payload was produced.
+
+Phase 7B scope:
+- No ServiceNow writeback.
+- No API production integration yet.
+- No model fallback.
+- No historical knowledge fallback.
+- No parallel bucket generation yet.
+
 ## Commands
 ```powershell
 python scripts/validate_env.py
@@ -310,6 +389,7 @@ python scripts/build_evidence_buckets.py --build-id <BUILD_ID>
 python scripts/smoke_llm_access.py
 python scripts/generate_service_now_fields.py --build-id <BUILD_ID>
 python scripts/validate_service_now_payload.py --build-id <BUILD_ID>
+python scripts/run_dod_agent.py --build-id <BUILD_ID>
 python -m pytest -q
 python -m ruff check .
 python -m mypy --no-incremental --cache-dir .cache/mypy_backend backend scripts tests
@@ -327,6 +407,7 @@ make build-evidence BUILD_ID=<BUILD_ID>
 make smoke-llm
 make generate-fields BUILD_ID=<BUILD_ID>
 make validate-output BUILD_ID=<BUILD_ID>
+make run-agent BUILD_ID=<BUILD_ID>
 ```
 
 ## Troubleshooting

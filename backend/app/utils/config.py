@@ -33,6 +33,8 @@ class Settings(BaseSettings):
     ADO_API_VERSION: str = "7.1"
 
     DATA_DIR: Path = Path("data")
+    DOD_CONFIDENCE_THRESHOLD: float = 0.70
+    DOD_HIGH_RISK_CONFIDENCE_THRESHOLD: float = 0.85
 
     model_config = SettingsConfigDict(
         env_file=".env",

@@ -1,0 +1,17 @@
+{
+  "commits": {},
+  "pull_requests": [],
+  "query": {
+    "queries": [
+      {
+        "items": [
+          "60079d94f2148dcf3adafcb78e28471a98d58db6"
+        ],
+        "type": "commit"
+      }
+    ],
+    "results": [
+      {}
+    ]
+  }
+}

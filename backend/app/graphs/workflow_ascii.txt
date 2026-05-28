@@ -1,5 +1,5 @@
-LangGraph Workflow
-===========================
+DoD LangGraph Workflow - Phase 7B
+=================================
 
 Detailed view
 -------------
@@ -59,11 +59,23 @@ route_after_evidence
   |
   | continue
   v
+assess_evidence_quality
+  |
+  v
+assess_risk_tier
+  |
+  v
+select_prompt_strategy
+  |
+  v
 generate_llm_outputs
   |
   v
 route_after_llm
   |---------------- failed ----------------|
+  |                                        v
+  |                             persist_routing_decisions
+  |                                        |
   |                                        v
   |                                  persist_run_summary
   |                                        |
@@ -76,6 +88,9 @@ validate_outputs
   |
   v
 assemble_run_result
+  |
+  v
+persist_routing_decisions
   |
   v
 persist_run_summary
@@ -95,22 +110,33 @@ START
   -> [failed?] persist_run_summary -> END
   -> build_evidence_buckets
   -> [failed?] persist_run_summary -> END
+  -> assess_evidence_quality
+  -> assess_risk_tier
+  -> select_prompt_strategy
   -> generate_llm_outputs
-  -> [failed?] persist_run_summary -> END
+  -> [failed?] persist_routing_decisions -> persist_run_summary -> END
   -> validate_outputs
   -> assemble_run_result
+  -> persist_routing_decisions
   -> persist_run_summary
   -> END
+
+Routing decisions captured
+--------------------------
+
+- Evidence quality per bucket.
+- Risk tier: low, medium, or high.
+- Prompt strategy per bucket.
+- Bucket-level LLM retry decisions.
+- Validation routing decisions.
+- Confidence and high-risk final status routing.
 
 Scope notes
 -----------
 
-- Basic failure/continue branching only.
-- No advanced prompt strategy routing.
-- No missing-test prompt routing.
-- No risk-tier routing.
-- No bucket-level branch generation.
-- No model fallback routing.
-- No historical knowledge fallback.
 - No ServiceNow writeback.
 - No Cosmos DB persistence.
+- No production API integration.
+- No model fallback routing.
+- No historical knowledge fallback.
+- No parallel bucket generation.

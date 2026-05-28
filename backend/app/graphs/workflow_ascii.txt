@@ -1,5 +1,5 @@
-DoD LangGraph Workflow - Phase 7B
-=================================
+DoD LangGraph Workflow - Generated From Compiled Graph
+=====================================================
 
 Detailed view
 -------------
@@ -12,7 +12,6 @@ validate_input
   v
 route_after_validate_input
   |---------------- failed ----------------|
-  |                                        v
   |                                  persist_run_summary
   |                                        |
   |                                        v
@@ -25,7 +24,6 @@ collect_raw_metadata
   v
 route_after_collect_raw
   |---------------- failed ----------------|
-  |                                        v
   |                                  persist_run_summary
   |                                        |
   |                                        v
@@ -38,7 +36,6 @@ normalize_canonical
   v
 route_after_normalize
   |---------------- failed ----------------|
-  |                                        v
   |                                  persist_run_summary
   |                                        |
   |                                        v
@@ -51,7 +48,6 @@ build_evidence_buckets
   v
 route_after_evidence
   |---------------- failed ----------------|
-  |                                        v
   |                                  persist_run_summary
   |                                        |
   |                                        v
@@ -73,8 +69,7 @@ generate_llm_outputs
   v
 route_after_llm
   |---------------- failed ----------------|
-  |                                        v
-  |                             persist_routing_decisions
+  |                                  persist_routing_decisions
   |                                        |
   |                                        v
   |                                  persist_run_summary
@@ -121,22 +116,31 @@ START
   -> persist_run_summary
   -> END
 
-Routing decisions captured
---------------------------
+Graph-derived edges
+-------------------
 
-- Evidence quality per bucket.
-- Risk tier: low, medium, or high.
-- Prompt strategy per bucket.
-- Bucket-level LLM retry decisions.
-- Validation routing decisions.
-- Confidence and high-risk final status routing.
+- START -> validate_input (direct)
+- assemble_run_result -> persist_routing_decisions (direct)
+- assess_evidence_quality -> assess_risk_tier (direct)
+- assess_risk_tier -> select_prompt_strategy (direct)
+- build_evidence_buckets -> assess_evidence_quality [continue] (conditional)
+- build_evidence_buckets -> persist_run_summary [failed] (conditional)
+- collect_raw_metadata -> normalize_canonical [continue] (conditional)
+- collect_raw_metadata -> persist_run_summary [failed] (conditional)
+- generate_llm_outputs -> validate_outputs [continue] (conditional)
+- generate_llm_outputs -> persist_routing_decisions [failed] (conditional)
+- normalize_canonical -> build_evidence_buckets [continue] (conditional)
+- normalize_canonical -> persist_run_summary [failed] (conditional)
+- persist_routing_decisions -> persist_run_summary (direct)
+- persist_run_summary -> END (direct)
+- select_prompt_strategy -> generate_llm_outputs (direct)
+- validate_input -> collect_raw_metadata [continue] (conditional)
+- validate_input -> persist_run_summary [failed] (conditional)
+- validate_outputs -> assemble_run_result (direct)
 
 Scope notes
 -----------
 
-- No ServiceNow writeback.
-- No Cosmos DB persistence.
-- No production API integration.
-- No model fallback routing.
-- No historical knowledge fallback.
-- No parallel bucket generation.
+- This file is generated from `build_dod_workflow().get_graph()`.
+- Conditional route labels come from compiled LangGraph edge metadata.
+- No ServiceNow writeback is represented in this graph.

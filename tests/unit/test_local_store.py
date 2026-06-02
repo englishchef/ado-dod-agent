@@ -119,9 +119,12 @@ def test_local_store_phase_6_helpers(tmp_path: Path) -> None:
     confidence_path = store.save_confidence_json(91, {"overall": 0.8})
 
     assert store.load_llm_outputs(91)["build_id"] == 91
+    assert store.load_service_now_payload(91)["change_description"] == "x"
+    assert store.load_confidence(91)["overall"] == 0.8
     assert validated_path.endswith("validated_output.json")
     assert payload_path.endswith("service_now_payload.json")
     assert confidence_path.endswith("confidence.json")
+    assert store.artifact_exists(91, "confidence.json")
 
 
 def test_local_store_run_summary_helpers(tmp_path: Path) -> None:

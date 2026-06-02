@@ -3,12 +3,21 @@
 from __future__ import annotations
 
 import json
+import time
 from pathlib import Path
 from typing import Any
+from uuid import uuid4
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, Header, HTTPException, status
+from fastapi.responses import JSONResponse
 from pydantic import ValidationError
 
+from backend.app.models.api import (
+    ApiIssue,
+    ArtifactResponse,
+    GenerateRunRequest,
+    GenerateRunResponse,
+)
 from backend.app.models.canonical import CanonicalDodDocument
 from backend.app.models.inputs import (
     BuildEvidenceInput,
@@ -20,8 +29,8 @@ from backend.app.models.outputs import (
     BuildEvidenceResponse,
     NormalizeRawResponse,
     RawCollectionResult,
-    RunGenerationResponse,
 )
+from backend.app.models.run_summary import DodRunSummary, RunIssue
 from backend.app.services.collectors.raw_metadata import collect_raw_metadata
 from backend.app.services.evidence.builder import build_evidence_bundle, build_evidence_summary
 from backend.app.services.normalizers.canonical import (
@@ -31,27 +40,70 @@ from backend.app.services.normalizers.canonical import (
 from backend.app.services.orchestration.dod_run_service import run_dod_agent
 from backend.app.services.storage.local_store import LocalJsonStore
 from backend.app.utils.config import get_settings
+from backend.app.utils.constants import CORRELATION_ID_HEADER
+from backend.app.utils.logging import get_logger
 
 router = APIRouter()
+logger = get_logger(__name__)
 
 
-@router.post(
-    "/generate",
-    response_model=RunGenerationResponse,
-    status_code=status.HTTP_501_NOT_IMPLEMENTED,
-)
-async def generate_run(_: GenerateRunInput) -> RunGenerationResponse:
-    """Placeholder endpoint for future pipeline summary generation."""
+@router.post("/generate", response_model=GenerateRunResponse)
+def generate_run(
+    request: GenerateRunRequest,
+    x_correlation_id: str | None = Header(default=None, alias=CORRELATION_ID_HEADER),
+) -> GenerateRunResponse | JSONResponse:
+    """Run the Phase 7 DoD agent and return the final ServiceNow-ready payload."""
 
-    return RunGenerationResponse(
-        status="not_implemented",
-        message=(
-            "Phase 4 supports raw metadata collection (/api/v1/runs/collect-raw), "
-            "deterministic normalization (/api/v1/runs/normalize), and deterministic "
-            "evidence bucket generation (/api/v1/runs/build-evidence); full generation "
-            "workflow is not implemented yet."
+    started_at = time.perf_counter()
+    correlation_id = request.correlation_id or x_correlation_id or str(uuid4())
+    input_data = request.model_dump()
+    input_data["correlation_id"] = correlation_id
+    try:
+        summary = run_dod_agent(input_data)
+    except Exception:
+        logger.warning(
+            "dod_generate_failed correlation_id=%s build_id=%s organization=%s project=%s",
+            correlation_id,
+            request.build_id,
+            request.organization,
+            request.project,
+        )
+        return _safe_error_response(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            code="orchestration_failed",
+            message="DoD agent orchestration failed.",
+            correlation_id=correlation_id,
+        )
+
+    response = _response_from_summary(summary, correlation_id)
+    duration_ms = int((time.perf_counter() - started_at) * 1000)
+    overall = _overall_confidence(summary.confidence)
+    logger.info(
+        (
+            "dod_generate_complete run_id=%s correlation_id=%s build_id=%s "
+            "organization=%s project=%s status=%s warning_count=%s error_count=%s "
+            "confidence_overall=%s duration_ms=%s"
         ),
+        summary.run_id,
+        correlation_id,
+        summary.build_id,
+        summary.organization,
+        summary.project,
+        summary.status,
+        len(summary.warnings),
+        len(summary.errors),
+        overall,
+        duration_ms,
     )
+    if summary.status == "failed" and not summary.service_now_payload:
+        return _safe_error_response(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            code="orchestration_failed",
+            message="DoD agent orchestration failed before producing a usable payload.",
+            correlation_id=correlation_id,
+            details={"run_id": summary.run_id, "build_id": summary.build_id},
+        )
+    return response
 
 
 @router.post("/orchestrate")
@@ -60,6 +112,62 @@ def orchestrate_run(request: GenerateRunInput) -> dict[str, Any]:
 
     summary = run_dod_agent(request.model_dump())
     return summary.model_dump(mode="json")
+
+
+@router.get("/{build_id}/summary", response_model=ArtifactResponse)
+def get_run_summary_artifact(build_id: int) -> ArtifactResponse:
+    """Return persisted run summary without regenerating artifacts."""
+
+    store = LocalJsonStore(get_settings())
+    return _artifact_response(
+        store=store,
+        build_id=build_id,
+        artifact_type="summary",
+        filename="run_summary.json",
+        load=store.load_run_summary,
+    )
+
+
+@router.get("/{build_id}/payload", response_model=ArtifactResponse)
+def get_payload_artifact(build_id: int) -> ArtifactResponse:
+    """Return persisted ServiceNow-ready payload without regenerating artifacts."""
+
+    store = LocalJsonStore(get_settings())
+    return _artifact_response(
+        store=store,
+        build_id=build_id,
+        artifact_type="payload",
+        filename="service_now_payload.json",
+        load=store.load_service_now_payload,
+    )
+
+
+@router.get("/{build_id}/confidence", response_model=ArtifactResponse)
+def get_confidence_artifact(build_id: int) -> ArtifactResponse:
+    """Return persisted confidence artifact without regenerating artifacts."""
+
+    store = LocalJsonStore(get_settings())
+    return _artifact_response(
+        store=store,
+        build_id=build_id,
+        artifact_type="confidence",
+        filename="confidence.json",
+        load=store.load_confidence,
+    )
+
+
+@router.get("/{build_id}/routing-decisions", response_model=ArtifactResponse)
+def get_routing_decisions_artifact(build_id: int) -> ArtifactResponse:
+    """Return persisted routing decisions without regenerating artifacts."""
+
+    store = LocalJsonStore(get_settings())
+    return _artifact_response(
+        store=store,
+        build_id=build_id,
+        artifact_type="routing_decisions",
+        filename="routing_decisions.json",
+        load=store.load_routing_decisions,
+    )
 
 
 @router.post("/collect-raw", response_model=RawCollectionResult)
@@ -193,3 +301,88 @@ async def build_evidence(request: BuildEvidenceInput) -> BuildEvidenceResponse:
         },
     )
     return BuildEvidenceResponse.model_validate(summary)
+
+
+def _response_from_summary(
+    summary: DodRunSummary,
+    correlation_id: str | None,
+) -> GenerateRunResponse:
+    return GenerateRunResponse(
+        run_id=summary.run_id,
+        correlation_id=correlation_id,
+        status=summary.status,
+        build_id=summary.build_id,
+        organization=summary.organization,
+        project=summary.project,
+        service_now_payload=summary.service_now_payload,
+        confidence=summary.confidence,
+        artifact_paths=summary.artifact_paths,
+        warnings=[_api_issue_from_run_issue(issue) for issue in summary.warnings],
+        errors=[_api_issue_from_run_issue(issue) for issue in summary.errors],
+    )
+
+
+def _api_issue_from_run_issue(issue: RunIssue) -> ApiIssue:
+    return ApiIssue(
+        severity=issue.severity,
+        code=issue.code,
+        message=issue.message,
+        phase=issue.phase,
+    )
+
+
+def _artifact_response(
+    *,
+    store: LocalJsonStore,
+    build_id: int,
+    artifact_type: str,
+    filename: str,
+    load: Any,
+) -> ArtifactResponse:
+    try:
+        content = load(build_id)
+    except FileNotFoundError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={
+                "status": "failed",
+                "message": f"{artifact_type} artifact not found for build_id={build_id}.",
+                "code": "artifact_not_found",
+                "details": {"build_id": build_id, "artifact_type": artifact_type},
+            },
+        ) from exc
+    return ArtifactResponse(
+        build_id=build_id,
+        artifact_type=artifact_type,
+        path=store.output_path(build_id, filename),
+        content=content,
+    )
+
+
+def _safe_error_response(
+    *,
+    status_code: int,
+    code: str,
+    message: str,
+    correlation_id: str | None,
+    details: dict[str, Any] | None = None,
+) -> JSONResponse:
+    return JSONResponse(
+        status_code=status_code,
+        content={
+            "status": "failed",
+            "message": message,
+            "code": code,
+            "correlation_id": correlation_id,
+            "details": details or {},
+        },
+    )
+
+
+def _overall_confidence(confidence: dict[str, Any] | None) -> float | None:
+    if not isinstance(confidence, dict):
+        return None
+    value = confidence.get("overall")
+    if isinstance(value, int | float):
+        return float(value)
+    return None

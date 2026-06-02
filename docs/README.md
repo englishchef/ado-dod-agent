@@ -13,6 +13,7 @@ Python backend for collecting Azure DevOps build metadata and preparing Definiti
 - Phase 7A: LangGraph orchestration over Phases 2-6 with basic branching
 - Phase 7B: deterministic advanced routing for evidence quality, risk tier, prompt strategy,
   bucket retry, and confidence-based final status
+- Phase 8: FastAPI pipeline-facing generation endpoint and read-only artifact retrieval
 
 Out of scope:
 - ServiceNow writeback
@@ -89,12 +90,17 @@ No PATs are used.
 
 ## Endpoints
 - `GET /health`
+- `GET /ready`
 - `GET /api/v1/smoke/ado-auth`
-- `POST /api/v1/runs/generate` (placeholder)
+- `POST /api/v1/runs/generate`
 - `POST /api/v1/runs/collect-raw`
 - `POST /api/v1/runs/normalize`
 - `POST /api/v1/runs/build-evidence`
 - `POST /api/v1/runs/orchestrate`
+- `GET /api/v1/runs/{build_id}/summary`
+- `GET /api/v1/runs/{build_id}/payload`
+- `GET /api/v1/runs/{build_id}/confidence`
+- `GET /api/v1/runs/{build_id}/routing-decisions`
 
 ## Phase 2 Raw Collection
 Input:
@@ -378,6 +384,85 @@ Phase 7B scope:
 - No model fallback.
 - No historical knowledge fallback.
 - No parallel bucket generation yet.
+
+## Phase 8 FastAPI Pipeline API
+Phase 8 exposes the completed DoD Agent workflow through FastAPI so an Azure DevOps pipeline can request the final 8-field ServiceNow-ready JSON payload. The API calls the existing orchestration service and does not perform ServiceNow writeback.
+
+Main endpoint:
+```text
+POST /api/v1/runs/generate
+```
+
+Request:
+```json
+{
+  "organization": "ado-org",
+  "project": "ado-project",
+  "build_id": 123456,
+  "mode": "pipeline"
+}
+```
+
+Response shape:
+```json
+{
+  "run_id": "dod-run-...",
+  "correlation_id": "optional-correlation-id",
+  "status": "completed",
+  "build_id": 123456,
+  "organization": "ado-org",
+  "project": "ado-project",
+  "service_now_payload": {
+    "change_description": "...",
+    "short_change_description": "...",
+    "justification": "...",
+    "testing_performed": "...",
+    "implementation_plan": "...",
+    "validation_plan": "...",
+    "backout_plan": "...",
+    "risk_impact_analysis": "..."
+  },
+  "confidence": {"overall": 0.82},
+  "artifact_paths": {},
+  "warnings": [],
+  "errors": []
+}
+```
+
+Status meanings:
+- `completed`: payload is ready and confidence met the applicable threshold.
+- `completed_with_warnings`: payload is ready with non-blocking warnings.
+- `needs_review`: payload exists, but downstream review is recommended.
+- `failed`: the agent did not produce a usable payload.
+
+Read-only artifact endpoints:
+- `GET /api/v1/runs/{build_id}/summary`
+- `GET /api/v1/runs/{build_id}/payload`
+- `GET /api/v1/runs/{build_id}/confidence`
+- `GET /api/v1/runs/{build_id}/routing-decisions`
+
+Health/readiness:
+- `GET /health`
+- `GET /ready`
+
+Example:
+```powershell
+curl -X POST http://localhost:8000/api/v1/runs/generate `
+  -H "Content-Type: application/json" `
+  -H "X-Correlation-ID: demo-correlation-id" `
+  -d '{
+    "organization": "ado-org",
+    "project": "ado-project",
+    "build_id": 123456,
+    "mode": "pipeline"
+  }'
+```
+
+Phase 8 scope:
+- ServiceNow writeback is not part of this agent.
+- The downstream pipeline step consumes `service_now_payload`.
+- Testing controls such as `skip_nodes`, `start_from`, `use_existing_artifacts`, and `force_refresh` are not exposed.
+- No API keys or PATs are used for ADO/model auth.
 
 ## Commands
 ```powershell

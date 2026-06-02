@@ -18,21 +18,6 @@ def test_health_endpoint_returns_ok() -> None:
     assert payload["service"] == "ado-dod-agent"
 
 
-def test_runs_generate_placeholder_response() -> None:
-    """Generate endpoint should remain a Phase-1 placeholder."""
-
-    client = TestClient(app)
-    response = client.post(
-        "/api/v1/runs/generate",
-        json={"organization": "org", "project": "proj", "build_id": 123, "mode": "local"},
-    )
-
-    assert response.status_code == 501
-    payload = response.json()
-    assert payload["status"] == "not_implemented"
-    assert "Phase 4 supports raw metadata collection" in payload["message"]
-
-
 def test_smoke_ado_auth_endpoint_returns_ok(monkeypatch: MonkeyPatch) -> None:
     """Smoke auth endpoint should support mocked auth ping without live Azure calls."""
 

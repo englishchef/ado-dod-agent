@@ -159,6 +159,18 @@ class LocalJsonStore:
         payload = self.load_json(f"output/{build_id}/llm_outputs.json")
         return payload if isinstance(payload, dict) else {}
 
+    def load_service_now_payload(self, build_id: int) -> dict[str, Any]:
+        """Load the flat ServiceNow-ready payload for a build id."""
+
+        payload = self.load_json(f"output/{build_id}/service_now_payload.json")
+        return payload if isinstance(payload, dict) else {}
+
+    def load_confidence(self, build_id: int) -> dict[str, Any]:
+        """Load confidence artifact for a build id."""
+
+        payload = self.load_json(f"output/{build_id}/confidence.json")
+        return payload if isinstance(payload, dict) else {}
+
     def load_run_summary(self, build_id: int) -> dict[str, Any]:
         """Load Phase 7A run summary payload for a build id."""
 
@@ -170,4 +182,9 @@ class LocalJsonStore:
 
         payload = self.load_json(f"output/{build_id}/routing_decisions.json")
         return payload if isinstance(payload, dict) else {}
+
+    def artifact_exists(self, build_id: int, artifact_name: str) -> bool:
+        """Return whether an output artifact exists for a build id."""
+
+        return (self._base_dir / "output" / str(build_id) / artifact_name).exists()
 

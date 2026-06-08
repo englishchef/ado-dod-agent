@@ -7,6 +7,8 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from backend.app.models.traceability import TraceabilityReport
+
 PLACEHOLDER_VALUES = {
     "tbd",
     "n/a",
@@ -79,3 +81,4 @@ class ValidatedDodOutput(ValidatedOutputBaseModel):
     validation_issues: list[ValidationIssue]
     source_llm_outputs_path: str | None = None
     source_evidence_bundle_path: str | None = None
+    traceability_report: TraceabilityReport | None = None

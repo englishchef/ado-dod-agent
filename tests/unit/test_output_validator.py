@@ -6,7 +6,11 @@ from copy import deepcopy
 from datetime import UTC, datetime
 
 from backend.app.models.validated_outputs import ValidationIssue
-from backend.app.services.validation.output_validator import validate_llm_outputs
+from backend.app.services.validation.output_validator import (
+    detect_raw_reference_leakage,
+    validate_llm_outputs,
+    validate_no_raw_reference_leakage,
+)
 
 
 def valid_llm_outputs() -> dict[str, object]:
@@ -137,3 +141,31 @@ def test_missing_test_evidence_is_warning() -> None:
         and issue.severity == "warning"
         for issue in issues
     )
+
+
+def test_detect_raw_reference_leakage_returns_true_for_raw_paths() -> None:
+    assert detect_raw_reference_leakage("Reviewed raw.changes.value[3].") is True
+    assert detect_raw_reference_leakage("Reviewed [canonical.change_context.commits[0]].") is True
+
+
+def test_service_now_payload_with_raw_refs_creates_leakage_issue() -> None:
+    issues = validate_no_raw_reference_leakage(
+        {
+            "change_description": "Deploy service [raw.changes.value[3]]",
+            "short_change_description": "Deploy service",
+        }
+    )
+
+    assert any(issue.code == "RAW_REFERENCE_LEAKAGE" for issue in issues)
+    assert all(issue.severity == "error" for issue in issues)
+
+
+def test_clean_payload_passes_leakage_validation() -> None:
+    issues = validate_no_raw_reference_leakage(
+        {
+            "change_description": "Deploy service through the approved pipeline.",
+            "short_change_description": "Deploy service",
+        }
+    )
+
+    assert issues == []

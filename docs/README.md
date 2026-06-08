@@ -14,6 +14,7 @@ Python backend for collecting Azure DevOps build metadata and preparing Definiti
 - Phase 7B: deterministic advanced routing for evidence quality, risk tier, prompt strategy,
   bucket retry, and confidence-based final status
 - Phase 8: FastAPI pipeline-facing generation endpoint and read-only artifact retrieval
+- Phase 9: deterministic post-generation rule evaluation and test-evidence quality scoring
 
 Out of scope:
 - ServiceNow writeback
@@ -101,6 +102,8 @@ No PATs are used.
 - `GET /api/v1/runs/{build_id}/payload`
 - `GET /api/v1/runs/{build_id}/confidence`
 - `GET /api/v1/runs/{build_id}/routing-decisions`
+- `GET /api/v1/runs/{build_id}/traceability-report`
+- `GET /api/v1/runs/{build_id}/rule-evaluation`
 
 ## Phase 2 Raw Collection
 Input:
@@ -178,6 +181,13 @@ Phase 4 scope:
 - deterministic evidence selection only
 - no LLM calls yet
 - prompt-driven generation starts in Phase 5
+
+Evidence source references:
+- Evidence bucket fields use friendly references such as `work_item:12345`,
+  `commit:9f3a21b`, `pipeline_task:Run_Functional_Tests`, and `artifact:drop`.
+- Original raw or canonical source paths are preserved only in
+  `evidence_bundle.source_ref_map[*].original_ref` for audit/debug traceability.
+- LLM prompts should use friendly evidence references only.
 
 ## Phase 5A LLM Access Smoke Validation
 Phase 5A validates the local Azure AI Foundry / Azure OpenAI-compatible model endpoint access path before any ServiceNow field generation is implemented. It uses Microsoft Entra ID through `DefaultAzureCredential` and RBAC/PIM. No API key is used or supported.
@@ -266,6 +276,11 @@ Phase 5B reminders:
 - No deterministic confidence scoring is implemented yet.
 - Generated output is draft text and should be reviewed.
 - Missing PR, test, rollback, or other evidence should be reflected honestly in `missing_information` and conservative field language.
+- LLM prompts generate business-ready ServiceNow verbiage suitable for direct insertion into
+  the eight generated fields.
+- Internal evidence references, raw JSON paths, canonical paths, `source_ref`, and
+  `source_ref_map` must not appear in generated field text.
+- Traceability remains in `evidence_used` and later traceability/reporting artifacts.
 
 ## Phase 6 Validate And Assemble Output
 Phase 6 validates the Phase 5B LLM outputs, flags unsupported claims, computes deterministic confidence, and assembles the final flat ServiceNow-ready payload. It does not update ServiceNow.
@@ -278,6 +293,7 @@ Outputs:
 - `data/output/{build_id}/validated_output.json`
 - `data/output/{build_id}/service_now_payload.json`
 - `data/output/{build_id}/confidence.json`
+- `data/output/{build_id}/traceability_report.json`
 
 CLI:
 ```powershell
@@ -295,8 +311,18 @@ Validation behavior:
 - Missing test evidence lowers confidence but does not automatically fail.
 - Missing PR evidence is not a hard failure.
 - Unsupported claims such as unproven test-pass, rollback-tested, or absolute no-risk claims are flagged.
+- `RAW_REFERENCE_LEAKAGE` validation prevents raw/internal evidence references from appearing in
+  final ServiceNow field text.
 - No ServiceNow update/writeback occurs in this phase.
 - LangGraph orchestration starts in a later phase.
+
+Payload formatting and traceability:
+- `service_now_payload.json` contains exactly the eight clean business-ready ServiceNow fields.
+- Raw/internal JSON paths such as `raw.*`, `canonical.*`, `evidence.*`, `source_ref`, and
+  bracketed evidence identifiers are not allowed in ServiceNow field text.
+- `traceability_report.json` contains field-level `evidence_used` references, friendly refs, and
+  original source mappings from `source_ref_map` when available.
+- Downstream ServiceNow integration should use `service_now_payload.json` only.
 
 Normalize API:
 - `POST /api/v1/runs/normalize`
@@ -340,7 +366,9 @@ Outputs:
 - `data/output/{build_id}/validated_output.json`
 - `data/output/{build_id}/service_now_payload.json`
 - `data/output/{build_id}/confidence.json`
+- `data/output/{build_id}/traceability_report.json`
 - `data/output/{build_id}/run_summary.json`
+- `data/output/{build_id}/rule_evaluation.json`
 
 Status meanings:
 - `completed`: run finished without warnings and confidence met the threshold.
@@ -440,6 +468,7 @@ Read-only artifact endpoints:
 - `GET /api/v1/runs/{build_id}/payload`
 - `GET /api/v1/runs/{build_id}/confidence`
 - `GET /api/v1/runs/{build_id}/routing-decisions`
+- `GET /api/v1/runs/{build_id}/traceability-report`
 
 Health/readiness:
 - `GET /health`
@@ -464,6 +493,56 @@ Phase 8 scope:
 - Testing controls such as `skip_nodes`, `start_from`, `use_existing_artifacts`, and `force_refresh` are not exposed.
 - No API keys or PATs are used for ADO/model auth.
 
+## Phase 9 Rule Evaluation
+Phase 9 evaluates existing artifacts after the AI output has been formatted. It is deterministic:
+it does not call ADO, Azure OpenAI, or ServiceNow, and it does not regenerate or mutate
+`service_now_payload.json`.
+
+Inputs:
+- `data/evidence/{build_id}/evidence_bundle.json`
+- `data/output/{build_id}/service_now_payload.json`
+- `data/output/{build_id}/llm_outputs.json`
+- `data/output/{build_id}/validated_output.json`
+- `data/output/{build_id}/confidence.json`
+- `data/output/{build_id}/routing_decisions.json`
+- `data/output/{build_id}/traceability_report.json`
+
+Output:
+- `data/output/{build_id}/rule_evaluation.json`
+
+CLI:
+```powershell
+python scripts/evaluate_rules.py --build-id <BUILD_ID>
+```
+
+Read-only API:
+- `GET /api/v1/runs/{build_id}/rule-evaluation`
+
+Rule categories:
+- test completeness
+- unsupported claim
+- backout plan quality
+- risk/impact consistency
+- field quality
+- traceability
+- confidence adjustment
+
+Severity levels:
+- `info`
+- `warning`
+- `review`
+- `error`
+
+Recommended statuses:
+- `completed`
+- `completed_with_warnings`
+- `needs_review`
+- `failed`
+
+Missing PR evidence does not fail the run. Missing test evidence lowers test completeness and may
+require review. Raw/internal references must not appear in `service_now_payload.json`; traceability
+remains separate in `traceability_report.json`.
+
 ## Commands
 ```powershell
 python scripts/validate_env.py
@@ -474,6 +553,7 @@ python scripts/build_evidence_buckets.py --build-id <BUILD_ID>
 python scripts/smoke_llm_access.py
 python scripts/generate_service_now_fields.py --build-id <BUILD_ID>
 python scripts/validate_service_now_payload.py --build-id <BUILD_ID>
+python scripts/evaluate_rules.py --build-id <BUILD_ID>
 python scripts/run_dod_agent.py --build-id <BUILD_ID>
 python -m pytest -q
 python -m ruff check .

@@ -94,6 +94,7 @@ def test_script_loads_inputs_and_writes_outputs(monkeypatch: MonkeyPatch, tmp_pa
     assert Path(summary["output_paths"]["validated_output_path"]).exists()
     assert Path(summary["output_paths"]["service_now_payload_path"]).exists()
     assert Path(summary["output_paths"]["confidence_path"]).exists()
+    assert Path(summary["output_paths"]["traceability_report_path"]).exists()
 
 
 def test_script_main_exits_nonzero_on_validation_errors(
@@ -159,6 +160,7 @@ def test_script_summary_does_not_print_tokens_or_authorization_headers() -> None
             "output_paths": {
                 "validated_output_path": "validated.json",
                 "service_now_payload_path": "payload.json",
+                "traceability_report_path": "traceability.json",
                 "confidence_path": "confidence.json",
             },
         }
@@ -167,3 +169,5 @@ def test_script_summary_does_not_print_tokens_or_authorization_headers() -> None
     assert "token" not in rendered
     assert "authorization" not in rendered
     assert "bearer" not in rendered
+    assert "traceability_report_path" in rendered
+    assert "raw_reference_leakage_issue_count" in rendered

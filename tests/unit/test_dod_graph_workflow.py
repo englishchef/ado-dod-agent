@@ -103,6 +103,14 @@ def _patch_happy_nodes(monkeypatch: MonkeyPatch) -> None:
             },
         },
     )
+    monkeypatch.setattr(
+        workflow,
+        "evaluate_rules_node",
+        lambda state: {
+            "rule_evaluation": {"summary": {"recommended_status": "completed"}},
+            "artifact_paths": {**state["artifact_paths"], "rule_evaluation": "rules.json"},
+        },
+    )
 
 
 def test_workflow_happy_path_completes(monkeypatch: MonkeyPatch, tmp_path: Any) -> None:
@@ -117,6 +125,7 @@ def test_workflow_happy_path_completes(monkeypatch: MonkeyPatch, tmp_path: Any) 
 
     assert result["status"] == "completed"
     assert result["artifact_paths"]["raw_bundle"] == "raw.json"
+    assert result["artifact_paths"]["rule_evaluation"] == "rules.json"
     assert result["artifact_paths"]["routing_decisions"].endswith("routing_decisions.json")
     assert result["artifact_paths"]["run_summary"].endswith("run_summary.json")
 
@@ -218,6 +227,30 @@ def test_workflow_low_confidence_results_needs_review(
         lambda state: {
             "service_now_payload": {"change_description": "x"},
             "confidence": {"overall": 0.4},
+        },
+    )
+
+    result = workflow.run_dod_workflow(_input())
+
+    assert result["status"] == "needs_review"
+
+
+def test_workflow_rule_review_results_needs_review(
+    monkeypatch: MonkeyPatch,
+    tmp_path: Any,
+) -> None:
+    _patch_happy_nodes(monkeypatch)
+    _patch_persist(monkeypatch)
+    monkeypatch.setattr(
+        "backend.app.graphs.nodes.get_settings",
+        lambda: Settings(DATA_DIR=tmp_path),
+    )
+    monkeypatch.setattr(
+        workflow,
+        "evaluate_rules_node",
+        lambda state: {
+            "status": "needs_review",
+            "rule_evaluation": {"summary": {"recommended_status": "needs_review"}},
         },
     )
 

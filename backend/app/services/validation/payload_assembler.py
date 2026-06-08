@@ -6,6 +6,7 @@ from typing import Any
 
 from backend.app.models.llm_outputs import CombinedLlmOutputs
 from backend.app.models.validated_outputs import ServiceNowPayload
+from backend.app.services.formatting.servicenow_formatter import format_service_now_payload
 
 SERVICE_NOW_FIELDS = (
     "change_description",
@@ -37,4 +38,4 @@ def assemble_service_now_payload(
         "backout_plan": payload.get("bucket_3", {}).get("backout_plan"),
         "risk_impact_analysis": payload.get("bucket_3", {}).get("risk_impact_analysis"),
     }
-    return ServiceNowPayload.model_validate(assembled)
+    return format_service_now_payload(ServiceNowPayload.model_validate(assembled))

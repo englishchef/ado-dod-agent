@@ -170,6 +170,34 @@ def get_routing_decisions_artifact(build_id: int) -> ArtifactResponse:
     )
 
 
+@router.get("/{build_id}/traceability-report", response_model=ArtifactResponse)
+def get_traceability_report_artifact(build_id: int) -> ArtifactResponse:
+    """Return persisted traceability report without regenerating artifacts."""
+
+    store = LocalJsonStore(get_settings())
+    return _artifact_response(
+        store=store,
+        build_id=build_id,
+        artifact_type="traceability_report",
+        filename="traceability_report.json",
+        load=store.load_traceability_report,
+    )
+
+
+@router.get("/{build_id}/rule-evaluation", response_model=ArtifactResponse)
+def get_rule_evaluation_artifact(build_id: int) -> ArtifactResponse:
+    """Return persisted rule evaluation without regenerating artifacts."""
+
+    store = LocalJsonStore(get_settings())
+    return _artifact_response(
+        store=store,
+        build_id=build_id,
+        artifact_type="rule_evaluation",
+        filename="rule_evaluation.json",
+        load=store.load_rule_evaluation,
+    )
+
+
 @router.post("/collect-raw", response_model=RawCollectionResult)
 async def collect_raw(request: CollectRawInput) -> RawCollectionResult:
     """Collect raw build metadata and persist local artifacts."""

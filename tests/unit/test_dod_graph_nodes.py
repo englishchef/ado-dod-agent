@@ -67,6 +67,21 @@ class FakeStore:
     def load_llm_outputs(self, build_id: int) -> dict[str, Any]:
         return {"build_id": build_id}
 
+    def load_service_now_payload(self, build_id: int) -> dict[str, Any]:
+        return {"change_description": "Change"}
+
+    def load_validated_output(self, build_id: int) -> dict[str, Any]:
+        return {"build_id": build_id}
+
+    def load_confidence(self, build_id: int) -> dict[str, Any]:
+        return {"overall": 0.8}
+
+    def load_routing_decisions(self, build_id: int) -> dict[str, Any]:
+        return {"decisions": []}
+
+    def load_traceability_report(self, build_id: int) -> dict[str, Any]:
+        return {"field_traceability": {}}
+
     def save_normalized_json(self, build_id: int, filename: str, payload: Any) -> str:
         self.saved[filename] = payload
         return self.normalized_path(build_id, filename)
@@ -87,6 +102,12 @@ class FakeStore:
 
     def save_confidence_json(self, build_id: int, payload: Any) -> str:
         return self.save_output_json(build_id, "confidence.json", payload)
+
+    def save_traceability_report_json(self, build_id: int, payload: Any) -> str:
+        return self.save_output_json(build_id, "traceability_report.json", payload)
+
+    def save_rule_evaluation_json(self, build_id: int, payload: Any) -> str:
+        return self.save_output_json(build_id, "rule_evaluation.json", payload)
 
     def save_run_summary_json(self, build_id: int, payload: Any) -> str:
         return self.save_output_json(build_id, "run_summary.json", payload)
@@ -230,6 +251,34 @@ def test_validate_outputs_node_stores_payload_and_confidence(monkeypatch: Monkey
     assert service_now_payload["change_description"] == "Change"
     assert confidence["overall"] == 0.8
     assert state["artifact_paths"]["confidence"].endswith("confidence.json")
+    assert state["artifact_paths"]["traceability_report"].endswith("traceability_report.json")
+
+
+def test_evaluate_rules_node_stores_rule_evaluation(monkeypatch: MonkeyPatch) -> None:
+    monkeypatch.setattr(nodes, "LocalJsonStore", FakeStore)
+
+    state = nodes.evaluate_rules_node(
+        _state(
+            evidence_result={"bucket_2": {}, "bucket_3": {}},
+            service_now_payload={
+                "change_description": "Change",
+                "short_change_description": "Short",
+                "justification": "Justification",
+                "testing_performed": "No automated tests were available.",
+                "implementation_plan": "Deploy via pipeline.",
+                "validation_plan": "Validate API health.",
+                "backout_plan": "Redeploy previous build.",
+                "risk_impact_analysis": "No specific risk signals were detected.",
+            },
+            llm_outputs={},
+            confidence={"overall": 0.8},
+        )
+    )
+
+    assert state["artifact_paths"]["rule_evaluation"].endswith("rule_evaluation.json")
+    rule_evaluation = state.get("rule_evaluation")
+    assert isinstance(rule_evaluation, dict)
+    assert rule_evaluation["summary"]["triggered_rule_count"] >= 0
 
 
 def test_assemble_run_result_status_rules(monkeypatch: MonkeyPatch, tmp_path: Path) -> None:

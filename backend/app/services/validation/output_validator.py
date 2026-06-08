@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from typing import Any, Literal
 
 from pydantic import ValidationError
@@ -21,6 +22,13 @@ BUCKET_FIELDS = {
     "bucket_2": ("testing_performed", "implementation_plan", "validation_plan"),
     "bucket_3": ("backout_plan", "risk_impact_analysis"),
 }
+
+_RAW_REFERENCE_LEAKAGE_RE = re.compile(
+    r"(\[(?:raw|canonical|evidence)\.[^\]]+\]|"
+    r"\b(?:raw|canonical|evidence)\.[A-Za-z0-9_.-]+(?:\[[0-9]+\])*|"
+    r"\bsource_ref(?:_map)?\b)",
+    re.IGNORECASE,
+)
 
 
 def validate_llm_outputs(
@@ -77,16 +85,46 @@ def validate_llm_outputs(
     return results
 
 
+def detect_raw_reference_leakage(text: str) -> bool:
+    """Return whether text contains raw/internal evidence references."""
+
+    return bool(_RAW_REFERENCE_LEAKAGE_RE.search(text))
+
+
+def validate_no_raw_reference_leakage(
+    payload: ServiceNowPayload | dict[str, Any],
+) -> list[ValidationIssue]:
+    """Validate that final ServiceNow fields do not expose internal evidence refs."""
+
+    payload_dict = payload.model_dump() if isinstance(payload, ServiceNowPayload) else payload
+    issues: list[ValidationIssue] = []
+    for field, value in payload_dict.items():
+        if isinstance(value, str) and detect_raw_reference_leakage(value):
+            issues.append(
+                _issue(
+                    "error",
+                    "RAW_REFERENCE_LEAKAGE",
+                    "Final ServiceNow field contains internal evidence reference.",
+                    field,
+                    None,
+                )
+            )
+    return issues
+
+
 def validate_service_now_payload(
-    payload: ServiceNowPayload,
+    payload: ServiceNowPayload | dict[str, Any],
     evidence_bundle: dict[str, Any] | None = None,
 ) -> list[ValidationIssue]:
     """Validate the final flat ServiceNow payload."""
 
     evidence = evidence_bundle or {}
     issues: list[ValidationIssue] = []
+    payload_model: ServiceNowPayload | None = None
     try:
-        ServiceNowPayload.model_validate(payload.model_dump())
+        payload_model = ServiceNowPayload.model_validate(
+            payload.model_dump() if isinstance(payload, ServiceNowPayload) else payload
+        )
     except ValidationError as exc:
         for error in exc.errors():
             field = str(error.get("loc", ["unknown"])[0])
@@ -94,7 +132,15 @@ def validate_service_now_payload(
                 _issue("error", "invalid_service_now_field", str(error["msg"]), field, None)
             )
 
-    joined_payload = " ".join(str(value) for value in payload.model_dump().values())
+    payload_dict = (
+        payload_model.model_dump()
+        if payload_model is not None
+        else payload.model_dump()
+        if isinstance(payload, ServiceNowPayload)
+        else payload
+    )
+    issues.extend(validate_no_raw_reference_leakage(payload_dict))
+    joined_payload = " ".join(str(value) for value in payload_dict.values())
     issues.extend(_risk_claim_issues(joined_payload, None, "risk_impact_analysis"))
     if _tests_missing(evidence):
         issues.extend(_test_claim_issues(joined_payload, None, "testing_performed"))

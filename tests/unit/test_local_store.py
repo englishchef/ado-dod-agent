@@ -117,13 +117,21 @@ def test_local_store_phase_6_helpers(tmp_path: Path) -> None:
     validated_path = store.save_validated_output_json(91, {"is_valid": True})
     payload_path = store.save_service_now_payload_json(91, {"change_description": "x"})
     confidence_path = store.save_confidence_json(91, {"overall": 0.8})
+    traceability_path = store.save_traceability_report_json(91, {"field_traceability": {}})
+    rule_path = store.save_rule_evaluation_json(91, {"rules_triggered": []})
 
     assert store.load_llm_outputs(91)["build_id"] == 91
     assert store.load_service_now_payload(91)["change_description"] == "x"
     assert store.load_confidence(91)["overall"] == 0.8
+    assert store.load_traceability_report(91)["field_traceability"] == {}
+    assert store.load_rule_evaluation(91)["rules_triggered"] == []
     assert validated_path.endswith("validated_output.json")
     assert payload_path.endswith("service_now_payload.json")
     assert confidence_path.endswith("confidence.json")
+    assert traceability_path.endswith("traceability_report.json")
+    assert rule_path.endswith("rule_evaluation.json")
+    assert store.traceability_report_path(91).endswith("traceability_report.json")
+    assert store.rule_evaluation_path(91).endswith("rule_evaluation.json")
     assert store.artifact_exists(91, "confidence.json")
 
 

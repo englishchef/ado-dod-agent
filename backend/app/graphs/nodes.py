@@ -32,6 +32,7 @@ from backend.app.services.routing.decision_recorder import make_decision
 from backend.app.services.routing.evidence_quality import assess_evidence_quality
 from backend.app.services.routing.prompt_strategy import select_prompt_strategy
 from backend.app.services.routing.risk_tier import assess_risk_tier
+from backend.app.services.rules.rule_engine import evaluate_rules
 from backend.app.services.storage.local_store import LocalJsonStore
 from backend.app.services.validation.service import validate_and_assemble_outputs
 from backend.app.utils.config import get_settings
@@ -85,6 +86,7 @@ def validate_input_node(state: DodGraphState) -> DodGraphState:
         "validated_output": state.get("validated_output"),
         "service_now_payload": state.get("service_now_payload"),
         "confidence": state.get("confidence"),
+        "rule_evaluation": state.get("rule_evaluation"),
         "artifact_paths": dict(state.get("artifact_paths") or {}),
         "warnings": list(state.get("warnings") or []),
         "errors": [*list(state.get("errors") or []), *errors],
@@ -412,6 +414,12 @@ def validate_outputs_node(state: DodGraphState) -> DodGraphState:
         validated_payload = validated.model_dump(mode="json")
         service_now_payload = validated.service_now_payload.model_dump(mode="json")
         confidence = validated.confidence.model_dump(mode="json")
+        traceability_model = getattr(validated, "traceability_report", None)
+        traceability_report = (
+            traceability_model.model_dump(mode="json")
+            if traceability_model is not None
+            else {}
+        )
         validated_output_path = store.save_validated_output_json(
             state["build_id"],
             validated_payload,
@@ -421,6 +429,10 @@ def validate_outputs_node(state: DodGraphState) -> DodGraphState:
             service_now_payload,
         )
         confidence_path = store.save_confidence_json(state["build_id"], confidence)
+        traceability_report_path = store.save_traceability_report_json(
+            state["build_id"],
+            traceability_report,
+        )
     except Exception as exc:
         return _with_error(state, "validation_failed", str(exc), "validation")
 
@@ -500,6 +512,7 @@ def validate_outputs_node(state: DodGraphState) -> DodGraphState:
                 "validated_output": validated_output_path,
                 "service_now_payload": service_now_payload_path,
                 "confidence": confidence_path,
+                "traceability_report": traceability_report_path,
             },
         ),
         "warnings": warnings,
@@ -555,6 +568,112 @@ def assemble_run_result_node(state: DodGraphState) -> DodGraphState:
         return {"status": STATUS_COMPLETED_WITH_WARNINGS, "completed_at": completed_at}
 
     return {"status": STATUS_COMPLETED, "completed_at": completed_at}
+
+
+def evaluate_rules_node(state: DodGraphState) -> DodGraphState:
+    """Run Phase 9 deterministic post-generation rule evaluation."""
+
+    if state.get("status") == STATUS_FAILED:
+        return {}
+
+    try:
+        store = LocalJsonStore(get_settings())
+        build_id = int(state["build_id"])
+        evidence_bundle_path = state.get("artifact_paths", {}).get(
+            "evidence_bundle",
+            store.evidence_path(build_id, "evidence_bundle.json"),
+        )
+        service_now_payload_path = state.get("artifact_paths", {}).get(
+            "service_now_payload",
+            store.output_path(build_id, "service_now_payload.json"),
+        )
+        llm_outputs_path = state.get("artifact_paths", {}).get(
+            "llm_outputs",
+            store.output_path(build_id, "llm_outputs.json"),
+        )
+        validated_output_path = state.get("artifact_paths", {}).get(
+            "validated_output",
+            store.output_path(build_id, "validated_output.json"),
+        )
+        confidence_path = state.get("artifact_paths", {}).get(
+            "confidence",
+            store.output_path(build_id, "confidence.json"),
+        )
+        routing_path = state.get("artifact_paths", {}).get(
+            "routing_decisions",
+            store.output_path(build_id, "routing_decisions.json"),
+        )
+        traceability_path = state.get("artifact_paths", {}).get(
+            "traceability_report",
+            store.output_path(build_id, "traceability_report.json"),
+        )
+        evaluation = evaluate_rules(
+            build_id=build_id,
+            evidence_bundle=state.get("evidence_result") or store.load_evidence_bundle(build_id),
+            service_now_payload=state.get("service_now_payload")
+            or store.load_service_now_payload(build_id),
+            llm_outputs=state.get("llm_outputs")
+            or _load_optional_dict(store.load_llm_outputs, build_id),
+            validated_output=state.get("validated_output")
+            or _load_optional_dict(store.load_validated_output, build_id),
+            confidence=state.get("confidence")
+            or _load_optional_dict(store.load_confidence, build_id),
+            routing_decisions=_routing_context_from_state(state)
+            or _load_optional_dict(store.load_routing_decisions, build_id),
+            traceability_report=_load_optional_dict(store.load_traceability_report, build_id),
+            source_paths={
+                "evidence_bundle": evidence_bundle_path,
+                "service_now_payload": service_now_payload_path,
+                "llm_outputs": llm_outputs_path,
+                "validated_output": validated_output_path,
+                "confidence": confidence_path,
+                "routing_decisions": routing_path,
+                "traceability_report": traceability_path,
+            },
+        )
+        evaluation_payload = evaluation.model_dump(mode="json")
+        rule_evaluation_path = store.save_rule_evaluation_json(build_id, evaluation_payload)
+    except Exception as exc:
+        return _with_error(state, "rule_evaluation_failed", str(exc), "rule_evaluation")
+
+    warnings = list(state.get("warnings") or [])
+    errors = list(state.get("errors") or [])
+    for item in evaluation_payload.get("rules_triggered", []):
+        if not isinstance(item, dict):
+            continue
+        issue = _issue(
+            str(item.get("severity", "warning")),
+            str(item.get("rule_id", "rule_triggered")),
+            str(item.get("message", "Rule triggered.")),
+            "rule_evaluation",
+        )
+        if issue["severity"] == "error":
+            errors.append(issue)
+        elif issue["severity"] in {"warning", "review"}:
+            warnings.append(issue)
+
+    recommended = evaluation_payload.get("summary", {}).get("recommended_status")
+    status = state.get("status", STATUS_STARTED)
+    if recommended == "failed":
+        status = STATUS_FAILED
+    elif recommended == "needs_review" and status != STATUS_FAILED:
+        status = STATUS_NEEDS_REVIEW
+    elif (
+        recommended == "completed_with_warnings"
+        and status not in {STATUS_FAILED, STATUS_NEEDS_REVIEW}
+    ):
+        status = STATUS_COMPLETED_WITH_WARNINGS
+
+    return {
+        "rule_evaluation": evaluation_payload,
+        "artifact_paths": _merge_artifact_paths(
+            state,
+            {"rule_evaluation": rule_evaluation_path},
+        ),
+        "warnings": warnings,
+        "errors": errors,
+        "status": status,
+    }
 
 
 def persist_routing_decisions_node(state: DodGraphState) -> DodGraphState:
@@ -674,6 +793,24 @@ def _load_evidence_bundle_from_state(state: DodGraphState) -> dict[str, Any]:
         return evidence
     store = LocalJsonStore(get_settings())
     return store.load_evidence_bundle(state["build_id"])
+
+
+def _load_optional_dict(load: Any, build_id: int) -> dict[str, Any] | None:
+    try:
+        payload = load(build_id)
+    except FileNotFoundError:
+        return None
+    return payload if isinstance(payload, dict) else None
+
+
+def _routing_context_from_state(state: DodGraphState) -> dict[str, Any] | None:
+    payload: dict[str, Any] = {}
+    if isinstance(state.get("risk_tier"), dict):
+        payload["risk_tier"] = state["risk_tier"]
+    decisions = state.get("routing_decisions")
+    if isinstance(decisions, list):
+        payload["decisions"] = decisions
+    return payload or None
 
 
 def _severity_for_quality(quality: str) -> str:

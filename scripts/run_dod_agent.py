@@ -88,6 +88,8 @@ def format_summary(
         f"- llm_outputs: {paths.get('llm_outputs')}",
         f"- validated_output: {paths.get('validated_output')}",
         f"- service_now_payload: {paths.get('service_now_payload')}",
+        f"- traceability_report: {paths.get('traceability_report')}",
+        f"- rule_evaluation: {paths.get('rule_evaluation')}",
         f"- confidence: {paths.get('confidence')}",
         f"- routing_decisions: {paths.get('routing_decisions')}",
         f"- run_summary: {paths.get('run_summary')}",

@@ -35,6 +35,7 @@ class Settings(BaseSettings):
     DATA_DIR: Path = Path("data")
     DOD_CONFIDENCE_THRESHOLD: float = 0.70
     DOD_HIGH_RISK_CONFIDENCE_THRESHOLD: float = 0.85
+    DOD_SHORT_DESCRIPTION_MAX_LENGTH: int = 160
 
     model_config = SettingsConfigDict(
         env_file=".env",

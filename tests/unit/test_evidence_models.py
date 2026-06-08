@@ -9,6 +9,7 @@ from backend.app.models.evidence import (
     EvidenceBundle,
     EvidenceGenerationMetadata,
     EvidenceServiceContext,
+    EvidenceSourceRef,
     ExecutionValidationEvidence,
     RiskFlagsEvidence,
     RollbackRiskEvidence,
@@ -43,9 +44,20 @@ def test_evidence_bundle_serializes_to_json() -> None:
             risk_flags=RiskFlagsEvidence(),
         ),
         generation_metadata=EvidenceGenerationMetadata(generated_sections=["bucket_1"]),
+        source_ref_map={
+            "work_item:77": EvidenceSourceRef(
+                friendly_ref="work_item:77",
+                original_ref="raw.work_items.value[0]",
+                source_type="work_item",
+                display_name="Pipeline change",
+            )
+        },
     )
 
     payload = bundle.model_dump(mode="json")
     assert payload["schema_version"] == "1.0"
     assert payload["build_id"] == 77
     assert "bucket_1" in payload
+    assert payload["source_ref_map"]["work_item:77"]["original_ref"] == (
+        "raw.work_items.value[0]"
+    )

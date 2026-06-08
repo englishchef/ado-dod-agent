@@ -63,7 +63,13 @@ def persist_outputs(
     build_id: int,
     validated: ValidatedDodOutput,
 ) -> dict[str, str]:
-    """Persist validated output, flat payload, and confidence artifacts."""
+    """Persist validated output, flat payload, confidence, and traceability artifacts."""
+
+    traceability_payload = (
+        validated.traceability_report.model_dump(mode="json")
+        if validated.traceability_report is not None
+        else {}
+    )
 
     return {
         "validated_output_path": store.save_validated_output_json(
@@ -75,6 +81,9 @@ def persist_outputs(
         "confidence_path": store.save_confidence_json(
             build_id, validated.confidence.model_dump(mode="json")
         ),
+        "traceability_report_path": store.save_traceability_report_json(
+            build_id, traceability_payload
+        ),
     }
 
 
@@ -84,10 +93,14 @@ def build_summary(validated: ValidatedDodOutput, output_paths: dict[str, str]) -
     issue_counts = {"info": 0, "warning": 0, "error": 0}
     for issue in validated.validation_issues:
         issue_counts[issue.severity] += 1
+    raw_reference_leakage_count = sum(
+        1 for issue in validated.validation_issues if issue.code == "RAW_REFERENCE_LEAKAGE"
+    )
     return {
         "build_id": validated.build_id,
         "is_valid": validated.is_valid,
         "issue_counts": issue_counts,
+        "raw_reference_leakage_issue_count": raw_reference_leakage_count,
         "confidence": {
             "overall": validated.confidence.overall,
             "bucket_1": validated.confidence.bucket_1,
@@ -108,9 +121,14 @@ def format_summary(summary: dict[str, Any]) -> str:
             f"- build_id: {summary['build_id']}",
             f"- valid: {summary['is_valid']}",
             f"- issue_counts: {summary['issue_counts']}",
+            (
+                "- raw_reference_leakage_issue_count: "
+                f"{summary.get('raw_reference_leakage_issue_count', 0)}"
+            ),
             f"- confidence: {summary['confidence']}",
             f"- validated_output_path: {paths['validated_output_path']}",
             f"- service_now_payload_path: {paths['service_now_payload_path']}",
+            f"- traceability_report_path: {paths['traceability_report_path']}",
             f"- confidence_path: {paths['confidence_path']}",
         ]
     )

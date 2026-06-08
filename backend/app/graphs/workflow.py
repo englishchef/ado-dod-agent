@@ -12,6 +12,7 @@ from backend.app.graphs.nodes import (
     assess_risk_tier_node,
     build_evidence_buckets_node,
     collect_raw_metadata_node,
+    evaluate_rules_node,
     generate_llm_outputs_node,
     normalize_canonical_node,
     persist_routing_decisions_node,
@@ -38,6 +39,7 @@ def build_dod_workflow() -> Any:
     graph.add_node("select_prompt_strategy", select_prompt_strategy_node)
     graph.add_node("generate_llm_outputs", generate_llm_outputs_node)
     graph.add_node("validate_outputs", validate_outputs_node)
+    graph.add_node("evaluate_rules", evaluate_rules_node)
     graph.add_node("assemble_run_result", assemble_run_result_node)
     graph.add_node("persist_routing_decisions", persist_routing_decisions_node)
     graph.add_node("persist_run_summary", persist_run_summary_node)
@@ -71,7 +73,8 @@ def build_dod_workflow() -> Any:
         route_after_llm,
         {"failed": "persist_routing_decisions", "continue": "validate_outputs"},
     )
-    graph.add_edge("validate_outputs", "assemble_run_result")
+    graph.add_edge("validate_outputs", "evaluate_rules")
+    graph.add_edge("evaluate_rules", "assemble_run_result")
     graph.add_edge("assemble_run_result", "persist_routing_decisions")
     graph.add_edge("persist_routing_decisions", "persist_run_summary")
     graph.add_edge("persist_run_summary", END)

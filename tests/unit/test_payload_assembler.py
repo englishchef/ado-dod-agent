@@ -44,3 +44,31 @@ def test_assembler_combines_bucket_outputs_into_exactly_8_fields() -> None:
     assert payload.model_dump() == expected
     assert len(payload.model_dump()) == 8
     assert "evidence_used" not in payload.model_dump()
+
+
+def test_assembler_removes_raw_internal_refs_from_final_payload() -> None:
+    payload = assemble_service_now_payload(
+        {
+            "bucket_1": {
+                "change_description": "Change [raw.changes.value[3]]",
+                "short_change_description": "Short change",
+                "justification": "Justification source_ref",
+            },
+            "bucket_2": {
+                "testing_performed": "Testing canonical.quality_context.failed_tests[0]",
+                "implementation_plan": "Implementation",
+                "validation_plan": "1. Validate API\n2. Review logs",
+            },
+            "bucket_3": {
+                "backout_plan": "Backout evidence.bucket_3.artifact_evidence[0]",
+                "risk_impact_analysis": "Risk analysis",
+            },
+        }
+    ).model_dump()
+
+    assert len(payload) == 8
+    assert "raw." not in " ".join(payload.values())
+    assert "canonical." not in " ".join(payload.values())
+    assert "evidence." not in " ".join(payload.values())
+    assert "source_ref" not in " ".join(payload.values())
+    assert payload["validation_plan"] == "1. Validate API\n2. Review logs"

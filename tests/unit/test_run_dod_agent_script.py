@@ -27,6 +27,8 @@ def _summary(status: str) -> DodRunSummary:
             "llm_outputs": "llm.json",
             "validated_output": "validated.json",
             "service_now_payload": "payload.json",
+            "traceability_report": "traceability.json",
+            "rule_evaluation": "rules.json",
             "confidence": "confidence.json",
             "routing_decisions": "routing.json",
             "run_summary": "summary.json",

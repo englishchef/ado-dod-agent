@@ -109,6 +109,16 @@ class LocalJsonStore:
 
         return self.save_output_json(build_id, "confidence.json", payload)
 
+    def traceability_report_path(self, build_id: int) -> str:
+        """Return canonical local path for a Phase R3 traceability report."""
+
+        return self.output_path(build_id, "traceability_report.json")
+
+    def rule_evaluation_path(self, build_id: int) -> str:
+        """Return canonical local path for a Phase 9 rule evaluation artifact."""
+
+        return self.output_path(build_id, "rule_evaluation.json")
+
     def run_summary_path(self, build_id: int) -> str:
         """Return canonical local path for a Phase 7A run summary."""
 
@@ -123,6 +133,16 @@ class LocalJsonStore:
         """Save the Phase 7B routing decisions artifact."""
 
         return self.save_output_json(build_id, "routing_decisions.json", payload)
+
+    def save_traceability_report_json(self, build_id: int, payload: Any) -> str:
+        """Save the Phase R3 traceability report artifact."""
+
+        return self.save_output_json(build_id, "traceability_report.json", payload)
+
+    def save_rule_evaluation_json(self, build_id: int, payload: Any) -> str:
+        """Save the Phase 9 rule evaluation artifact."""
+
+        return self.save_output_json(build_id, "rule_evaluation.json", payload)
 
     def save_run_summary_json(self, build_id: int, payload: Any) -> str:
         """Save the Phase 7A orchestration run summary artifact."""
@@ -171,6 +191,18 @@ class LocalJsonStore:
         payload = self.load_json(f"output/{build_id}/confidence.json")
         return payload if isinstance(payload, dict) else {}
 
+    def load_traceability_report(self, build_id: int) -> dict[str, Any]:
+        """Load traceability report artifact for a build id."""
+
+        payload = self.load_json(f"output/{build_id}/traceability_report.json")
+        return payload if isinstance(payload, dict) else {}
+
+    def load_validated_output(self, build_id: int) -> dict[str, Any]:
+        """Load validated output artifact for a build id."""
+
+        payload = self.load_json(f"output/{build_id}/validated_output.json")
+        return payload if isinstance(payload, dict) else {}
+
     def load_run_summary(self, build_id: int) -> dict[str, Any]:
         """Load Phase 7A run summary payload for a build id."""
 
@@ -181,6 +213,12 @@ class LocalJsonStore:
         """Load Phase 7B routing decisions payload for a build id."""
 
         payload = self.load_json(f"output/{build_id}/routing_decisions.json")
+        return payload if isinstance(payload, dict) else {}
+
+    def load_rule_evaluation(self, build_id: int) -> dict[str, Any]:
+        """Load Phase 9 rule evaluation payload for a build id."""
+
+        payload = self.load_json(f"output/{build_id}/rule_evaluation.json")
         return payload if isinstance(payload, dict) else {}
 
     def artifact_exists(self, build_id: int, artifact_name: str) -> bool:

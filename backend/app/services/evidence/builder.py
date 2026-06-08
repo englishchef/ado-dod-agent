@@ -25,6 +25,7 @@ from backend.app.models.evidence import (
     EvidenceBundle,
     EvidenceGenerationMetadata,
     EvidenceServiceContext,
+    EvidenceSourceRef,
     ExecutionValidationEvidence,
     FailureWarningEvidence,
     JobEvidence,
@@ -36,6 +37,7 @@ from backend.app.models.evidence import (
     TestEvidenceSummary,
     WorkItemEvidence,
 )
+from backend.app.services.evidence.reference_normalizer import normalize_source_ref
 
 DEFAULT_MAX_ITEMS_PER_SECTION = 10
 MAX_DESCRIPTION_CHARS = 1200
@@ -183,9 +185,25 @@ def _slice_with_tracking(items: list[Any], max_items: int) -> tuple[list[Any], b
     return items[:max_items], True
 
 
+def _friendly_source_ref(
+    source_type: str,
+    item: Any,
+    source_ref_map: dict[str, EvidenceSourceRef] | None = None,
+) -> str:
+    friendly_ref, map_entry = normalize_source_ref(
+        source_type=source_type,
+        item=item,
+        original_ref=getattr(item, "source_ref", None),
+    )
+    if source_ref_map is not None:
+        source_ref_map.setdefault(friendly_ref, map_entry)
+    return friendly_ref
+
+
 def build_bucket_1_change_intent(
     canonical: CanonicalDodDocument,
     max_items_per_section: int = DEFAULT_MAX_ITEMS_PER_SECTION,
+    source_ref_map: dict[str, EvidenceSourceRef] | None = None,
 ) -> ChangeIntentEvidence:
     """Build evidence bucket for change intent fields."""
 
@@ -223,7 +241,7 @@ def build_bucket_1_change_intent(
             priority=item.priority,
             business_value=item.business_value,
             tags=item.tags[:20],
-            source_ref=item.source_ref,
+            source_ref=_friendly_source_ref("work_item", item, source_ref_map),
         )
         for item in work_items
     ]
@@ -237,7 +255,7 @@ def build_bucket_1_change_intent(
             target_branch=clean_text(item.target_branch),
             reviewers=item.reviewers[:max_items_per_section],
             commit_ids=item.commit_ids[:max_items_per_section],
-            source_ref=item.source_ref,
+            source_ref=_friendly_source_ref("pull_request", item, source_ref_map),
         )
         for item in pull_requests
     ]
@@ -252,7 +270,7 @@ def build_bucket_1_change_intent(
                 message=message,
                 author_name=clean_text(item.author_name),
                 authored_at=item.authored_at,
-                source_ref=item.source_ref,
+                source_ref=_friendly_source_ref("commit", item, source_ref_map),
             )
         )
 
@@ -295,6 +313,7 @@ def build_bucket_1_change_intent(
 def _select_ranked_stages(
     stages: list[CanonicalStage],
     max_items: int,
+    source_ref_map: dict[str, EvidenceSourceRef] | None = None,
 ) -> tuple[list[StageEvidence], bool]:
     ranked = sorted(
         stages,
@@ -309,7 +328,7 @@ def _select_ranked_stages(
                 result=clean_text(item.result),
                 state=clean_text(item.state),
                 duration_seconds=item.duration_seconds,
-                source_ref=item.source_ref,
+                source_ref=_friendly_source_ref("stage", item, source_ref_map),
             )
             for item in selected
         ],
@@ -320,6 +339,7 @@ def _select_ranked_stages(
 def _select_ranked_jobs(
     jobs: list[CanonicalJob],
     max_items: int,
+    source_ref_map: dict[str, EvidenceSourceRef] | None = None,
 ) -> tuple[list[JobEvidence], bool]:
     ranked = sorted(
         jobs,
@@ -334,7 +354,7 @@ def _select_ranked_jobs(
                 result=clean_text(item.result),
                 state=clean_text(item.state),
                 duration_seconds=item.duration_seconds,
-                source_ref=item.source_ref,
+                source_ref=_friendly_source_ref("job", item, source_ref_map),
             )
             for item in selected
         ],
@@ -345,6 +365,7 @@ def _select_ranked_jobs(
 def _select_ranked_tasks(
     tasks: list[CanonicalTask],
     max_items: int,
+    source_ref_map: dict[str, EvidenceSourceRef] | None = None,
 ) -> tuple[list[TaskEvidence], bool]:
     ranked = sorted(
         tasks,
@@ -376,7 +397,7 @@ def _select_ranked_tasks(
                 state=clean_text(item.state),
                 duration_seconds=item.duration_seconds,
                 log_url=clean_text(item.log_url),
-                source_ref=item.source_ref,
+                source_ref=_friendly_source_ref("task", item, source_ref_map),
             )
             for item in selected
         ],
@@ -387,6 +408,7 @@ def _select_ranked_tasks(
 def _select_artifacts(
     artifacts: list[CanonicalArtifact],
     max_items: int,
+    source_ref_map: dict[str, EvidenceSourceRef] | None = None,
 ) -> tuple[list[ArtifactEvidence], bool]:
     selected, truncated = _slice_with_tracking(artifacts, max_items)
     return (
@@ -396,7 +418,7 @@ def _select_artifacts(
                 type=clean_text(item.type),
                 resource_type=clean_text(item.resource_type),
                 download_url=clean_text(item.download_url),
-                source_ref=item.source_ref,
+                source_ref=_friendly_source_ref("artifact", item, source_ref_map),
             )
             for item in selected
         ],
@@ -407,24 +429,29 @@ def _select_artifacts(
 def build_bucket_2_execution_validation(
     canonical: CanonicalDodDocument,
     max_items_per_section: int = DEFAULT_MAX_ITEMS_PER_SECTION,
+    source_ref_map: dict[str, EvidenceSourceRef] | None = None,
 ) -> ExecutionValidationEvidence:
     """Build evidence bucket for execution/validation fields."""
 
     stage_evidence, stage_truncated = _select_ranked_stages(
         canonical.execution_context.stages,
         max_items_per_section,
+        source_ref_map,
     )
     job_evidence, job_truncated = _select_ranked_jobs(
         canonical.execution_context.jobs,
         max_items_per_section,
+        source_ref_map,
     )
     task_evidence, task_truncated = _select_ranked_tasks(
         canonical.execution_context.tasks,
         max_items_per_section,
+        source_ref_map,
     )
     artifact_evidence, artifact_truncated = _select_artifacts(
         canonical.execution_context.artifacts,
         max_items_per_section,
+        source_ref_map,
     )
 
     failed_sample = dedupe_preserve_order(
@@ -532,38 +559,44 @@ def build_bucket_2_execution_validation(
     )
 
 
-def _failure_from_task(item: CanonicalTask) -> FailureWarningEvidence:
+def _failure_from_task(
+    item: CanonicalTask,
+    source_ref_map: dict[str, EvidenceSourceRef] | None = None,
+) -> FailureWarningEvidence:
     return FailureWarningEvidence(
         source_type="timeline_task",
         name=truncate_text(clean_text(item.name), 240),
         result=clean_text(item.result),
         message=None,
-        source_ref=item.source_ref,
+        source_ref=_friendly_source_ref("task", item, source_ref_map),
     )
 
 
 def _failure_from_test(
     source_type: str,
     item: CanonicalTestResult,
+    source_ref_map: dict[str, EvidenceSourceRef] | None = None,
 ) -> FailureWarningEvidence:
     return FailureWarningEvidence(
         source_type=source_type,
         name=truncate_text(clean_text(item.test_name), 240),
         result=clean_text(item.outcome),
         message=truncate_text(clean_text(item.error_message), 400),
-        source_ref=item.source_ref,
+        source_ref=_friendly_source_ref("test_result", item, source_ref_map),
     )
 
 
 def build_bucket_3_rollback_risk(
     canonical: CanonicalDodDocument,
     max_items_per_section: int = DEFAULT_MAX_ITEMS_PER_SECTION,
+    source_ref_map: dict[str, EvidenceSourceRef] | None = None,
 ) -> RollbackRiskEvidence:
     """Build evidence bucket for rollback/risk fields."""
 
     artifact_evidence, artifact_truncated = _select_artifacts(
         canonical.execution_context.artifacts,
         max_items_per_section,
+        source_ref_map,
     )
     rollback_indicators = dedupe_preserve_order(
         [
@@ -587,16 +620,16 @@ def build_bucket_3_rollback_risk(
     ][:max_items_per_section]
 
     task_failures = [
-        _failure_from_task(item)
+        _failure_from_task(item, source_ref_map)
         for item in canonical.execution_context.tasks
         if (item.result or "").lower() and (item.result or "").lower() != "succeeded"
     ]
     failed_tests = [
-        _failure_from_test("failed_test", item)
+        _failure_from_test("failed_test", item, source_ref_map)
         for item in canonical.quality_context.failed_tests
     ]
     warning_tests = [
-        _failure_from_test("warning_test", item)
+        _failure_from_test("warning_test", item, source_ref_map)
         for item in canonical.quality_context.warning_tests
     ]
     combined = task_failures + failed_tests + warning_tests
@@ -660,9 +693,10 @@ def build_evidence_bundle(
     """Build all evidence buckets from canonical normalized input."""
 
     max_items = max(1, int(max_items_per_section))
-    bucket_1 = build_bucket_1_change_intent(canonical, max_items)
-    bucket_2 = build_bucket_2_execution_validation(canonical, max_items)
-    bucket_3 = build_bucket_3_rollback_risk(canonical, max_items)
+    source_ref_map: dict[str, EvidenceSourceRef] = {}
+    bucket_1 = build_bucket_1_change_intent(canonical, max_items, source_ref_map)
+    bucket_2 = build_bucket_2_execution_validation(canonical, max_items, source_ref_map)
+    bucket_3 = build_bucket_3_rollback_risk(canonical, max_items, source_ref_map)
 
     missing_sections = [
         *bucket_1.evidence_gaps,
@@ -697,6 +731,7 @@ def build_evidence_bundle(
         bucket_2=bucket_2,
         bucket_3=bucket_3,
         generation_metadata=metadata,
+        source_ref_map=source_ref_map,
     )
 
 

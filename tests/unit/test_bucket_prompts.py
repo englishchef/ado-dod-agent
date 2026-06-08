@@ -9,6 +9,14 @@ from backend.app.prompts import (
 )
 
 
+def _all_prompts() -> list[str]:
+    return [
+        bucket_1_change_intent.build_prompt({"evidence_references": ["work_item:1"]}),
+        bucket_2_execution_validation.build_prompt({"evidence_references": ["artifact:drop"]}),
+        bucket_3_rollback_risk.build_prompt({"evidence_references": ["commit:9f3a21b"]}),
+    ]
+
+
 def test_bucket_1_prompt_includes_all_target_field_names() -> None:
     prompt = bucket_1_change_intent.build_prompt({"evidence_references": ["ref"]})
 
@@ -16,6 +24,32 @@ def test_bucket_1_prompt_includes_all_target_field_names() -> None:
     assert "short_change_description" in prompt
     assert "justification" in prompt
     assert "Return valid JSON only" in prompt
+
+
+def test_bucket_1_prompt_includes_servicenow_ready_instruction() -> None:
+    prompt = bucket_1_change_intent.build_prompt({"evidence_references": ["work_item:12345"]})
+
+    assert "ServiceNow-ready business verbiage" in prompt
+    assert "suitable for direct insertion into ServiceNow" in prompt
+
+
+def test_bucket_1_prompt_prohibits_raw_source_references_in_field_text() -> None:
+    prompt = bucket_1_change_intent.build_prompt({"evidence_references": ["work_item:12345"]})
+
+    assert "Do not include raw source references in field text" in prompt
+    assert "Do not include JSON paths such as raw.changes.value[3]" in prompt
+    assert "source_ref values" in prompt
+    assert "bracketed evidence" in prompt
+
+
+def test_bucket_1_prompt_includes_change_field_intents() -> None:
+    prompt = bucket_1_change_intent.build_prompt({"evidence_references": ["work_item:12345"]})
+
+    assert "what component or service is changing" in prompt
+    assert "Update of <component/service> <change purpose>" in prompt
+    assert "performance, security" in prompt
+    assert "supportability" in prompt
+    assert "inferred from available work" in prompt
 
 
 def test_bucket_2_prompt_includes_missing_test_and_no_hallucination_instruction() -> None:
@@ -26,9 +60,63 @@ def test_bucket_2_prompt_includes_missing_test_and_no_hallucination_instruction(
     assert "Return valid JSON only" in prompt
 
 
+def test_bucket_2_prompt_explicitly_handles_missing_automated_tests() -> None:
+    prompt = bucket_2_execution_validation.build_prompt(
+        {"test_evidence": {}},
+        prompt_strategy="bucket_2_missing_tests",
+    )
+
+    assert "Automated test results were not available" in prompt
+    assert (
+        "Additional validation should be confirmed through the approved release process" in prompt
+    )
+
+
+def test_bucket_2_prompt_prohibits_inventing_passed_tests() -> None:
+    prompt = bucket_2_execution_validation.build_prompt({"test_evidence": {}})
+
+    assert "Do not claim tests passed unless test evidence proves it" in prompt
+    assert "Do not say tests passed, all tests passed, or functional testing completed" in prompt
+    assert "Do not invent test results" in prompt
+
+
 def test_bucket_3_prompt_includes_rollback_not_tested_and_no_hallucination_instruction() -> None:
     prompt = bucket_3_rollback_risk.build_prompt({"rollback_indicators": []})
 
-    assert "Do not claim rollback has been tested unless evidence proves it" in prompt
+    assert "Do not claim rollback was tested unless evidence proves it" in prompt
     assert "Do not invent facts" in prompt
     assert "Return valid JSON only" in prompt
+
+
+def test_bucket_3_prompt_prohibits_claiming_rollback_tested_without_evidence() -> None:
+    prompt = bucket_3_rollback_risk.build_prompt(
+        {"rollback_indicators": []},
+        prompt_strategy="bucket_3_conservative_rollback",
+    )
+
+    assert "explicit rollback validation evidence was not available" in prompt
+    assert "Do not claim rollback was tested" in prompt
+    assert "rollback validation completed" in prompt
+
+
+def test_bucket_3_prompt_avoids_absolute_no_risk_language() -> None:
+    prompt = bucket_3_rollback_risk.build_prompt(
+        {"risk_flags": {}},
+        prompt_strategy="bucket_3_high_risk",
+    )
+
+    assert "Do not say no risk, zero risk, or no impact" in prompt
+    assert "No specific risk signals were detected in the collected evidence" in prompt
+    assert "not that the risk is impossible" in prompt
+
+
+def test_all_prompts_require_json_only_output() -> None:
+    for prompt in _all_prompts():
+        assert "Return valid JSON only" in prompt
+
+
+def test_all_prompts_use_evidence_references_only_in_evidence_used() -> None:
+    for prompt in _all_prompts():
+        assert "Use evidence references only in the evidence_used array" in prompt
+        assert "evidence_used must not be copied into field text" in prompt
+        assert "friendly source refs" in prompt

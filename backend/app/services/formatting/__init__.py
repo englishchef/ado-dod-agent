@@ -1,0 +1,1 @@
+"""Deterministic formatting helpers."""

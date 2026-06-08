@@ -44,6 +44,7 @@ class DodGraphState(TypedDict, total=False):
     validated_output: dict[str, Any] | None
     service_now_payload: dict[str, Any] | None
     confidence: dict[str, Any] | None
+    rule_evaluation: dict[str, Any] | None
     artifact_paths: dict[str, str]
     warnings: list[dict[str, Any]]
     errors: list[dict[str, Any]]

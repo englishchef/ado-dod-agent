@@ -73,6 +73,33 @@ def test_get_routing_decisions_returns_routing_content(
     assert response.json()["content"]["decisions"] == []
 
 
+def test_get_traceability_report_returns_traceability_content(
+    monkeypatch: MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    _patch_settings(monkeypatch, tmp_path)
+    store = LocalJsonStore(Settings(DATA_DIR=tmp_path))
+    store.save_traceability_report_json(123, {"field_traceability": {}})
+
+    response = TestClient(app).get("/api/v1/runs/123/traceability-report")
+
+    assert response.status_code == 200
+    assert response.json()["artifact_type"] == "traceability_report"
+    assert response.json()["content"]["field_traceability"] == {}
+
+
+def test_missing_traceability_report_returns_404(
+    monkeypatch: MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    _patch_settings(monkeypatch, tmp_path)
+
+    response = TestClient(app).get("/api/v1/runs/123/traceability-report")
+
+    assert response.status_code == 404
+    assert response.json()["detail"]["code"] == "artifact_not_found"
+
+
 def test_missing_artifact_returns_404(monkeypatch: MonkeyPatch, tmp_path: Path) -> None:
     _patch_settings(monkeypatch, tmp_path)
 

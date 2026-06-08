@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import json
 from datetime import UTC, datetime
+from typing import Any
 
 from backend.app.models.canonical import (
     CanonicalArtifact,
@@ -66,7 +68,7 @@ def _complete_canonical() -> CanonicalDodDocument:
             ],
             commits=[
                 CanonicalCommit(
-                    id="c1",
+                    id="9f3a21b8e7",
                     message="Add appsettings configuration for rollout",
                     author_name="dev",
                     authored_at=datetime(2026, 5, 2, tzinfo=UTC),
@@ -80,7 +82,7 @@ def _complete_canonical() -> CanonicalDodDocument:
                     description="Implements new behavior with safe rollout",
                     status="completed",
                     reviewers=["rev1"],
-                    commit_ids=["c1"],
+                    commit_ids=["9f3a21b8e7"],
                     source_ref="raw.pull_requests.value[0]",
                 )
             ],
@@ -195,6 +197,10 @@ def _complete_canonical() -> CanonicalDodDocument:
     )
 
 
+def _contains_raw_ref(value: Any) -> bool:
+    return "raw." in json.dumps(value, default=str)
+
+
 def _partial_canonical() -> CanonicalDodDocument:
     return CanonicalDodDocument(
         build_id=9,
@@ -227,6 +233,7 @@ def test_evidence_bundle_builds_from_complete_canonical() -> None:
     assert bundle.bucket_1.work_item_evidence
     assert bundle.bucket_2.stage_evidence
     assert bundle.bucket_3.artifact_evidence
+    assert bundle.source_ref_map
 
 
 def test_evidence_bundle_builds_from_partial_canonical() -> None:
@@ -242,6 +249,9 @@ def test_bucket_1_includes_work_items_commits_and_prs() -> None:
     assert len(bucket.work_item_evidence) == 1
     assert len(bucket.commit_evidence) == 1
     assert len(bucket.pull_request_evidence) == 1
+    assert bucket.work_item_evidence[0].source_ref == "work_item:101"
+    assert bucket.commit_evidence[0].source_ref == "commit:9f3a21b"
+    assert bucket.pull_request_evidence[0].source_ref == "pull_request:88"
 
 
 def test_bucket_1_records_gap_when_prs_missing() -> None:
@@ -258,6 +268,9 @@ def test_bucket_2_includes_timeline_artifacts_and_test_summary() -> None:
     assert bucket.task_evidence
     assert bucket.artifact_evidence
     assert bucket.test_evidence.total_runs == 1
+    assert bucket.stage_evidence[0].source_ref == "pipeline_stage:Deploy_Stage"
+    assert "pipeline_task:Run_unit_tests" in bucket.evidence_references
+    assert bucket.artifact_evidence[0].source_ref == "artifact:drop"
 
 
 def test_bucket_2_records_gap_when_tests_missing() -> None:
@@ -282,6 +295,43 @@ def test_failed_timeline_and_test_evidence_appear_in_bucket_3() -> None:
     source_types = {item.source_type for item in bucket.failed_or_warning_evidence}
     assert "timeline_task" in source_types
     assert "failed_test" in source_types
+    source_refs = {item.source_ref for item in bucket.failed_or_warning_evidence}
+    assert "pipeline_task:Run_unit_tests" in source_refs
+    assert "test_result:test_database_migration" in source_refs
+
+
+def test_source_ref_map_preserves_raw_refs_only_in_original_ref() -> None:
+    bundle = build_evidence_bundle(_complete_canonical())
+
+    assert bundle.source_ref_map["commit:9f3a21b"].original_ref == "raw.changes.value[0]"
+    assert bundle.source_ref_map["pipeline_task:Run_unit_tests"].original_ref == (
+        "raw.timeline.records[2]"
+    )
+    assert bundle.source_ref_map["artifact:drop"].original_ref == "raw.artifacts.value[0]"
+
+    bucket_payloads = [
+        bundle.bucket_1.model_dump(mode="json"),
+        bundle.bucket_2.model_dump(mode="json"),
+        bundle.bucket_3.model_dump(mode="json"),
+    ]
+    assert not any(_contains_raw_ref(payload) for payload in bucket_payloads)
+    assert not any(
+        ref.startswith("raw.")
+        for ref in [
+            *bundle.bucket_1.evidence_references,
+            *bundle.bucket_2.evidence_references,
+            *bundle.bucket_3.evidence_references,
+        ]
+    )
+
+
+def test_evidence_bundle_serializes_with_source_ref_map() -> None:
+    payload = build_evidence_bundle(_complete_canonical()).model_dump(mode="json")
+
+    assert payload["source_ref_map"]["work_item:101"]["friendly_ref"] == "work_item:101"
+    assert payload["source_ref_map"]["commit:9f3a21b"]["display_name"] == (
+        "Add appsettings configuration for rollout"
+    )
 
 
 def test_text_cleanup_and_html_stripping() -> None:

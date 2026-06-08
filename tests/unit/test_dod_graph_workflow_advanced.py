@@ -61,6 +61,14 @@ def _patch_common(monkeypatch: MonkeyPatch, tmp_path: Any) -> None:
             },
         },
     )
+    monkeypatch.setattr(
+        workflow,
+        "evaluate_rules_node",
+        lambda state: {
+            "rule_evaluation": {"summary": {"recommended_status": "completed"}},
+            "artifact_paths": {**state["artifact_paths"], "rule_evaluation": "rules.json"},
+        },
+    )
 
 
 def test_workflow_happy_path_creates_routing_decisions(

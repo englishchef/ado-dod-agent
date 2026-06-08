@@ -169,6 +169,13 @@ class EvidenceGenerationMetadata(EvidenceBaseModel):
     max_items_per_section: int = 10
 
 
+class EvidenceSourceRef(EvidenceBaseModel):
+    friendly_ref: str
+    original_ref: str | None = None
+    source_type: str
+    display_name: str | None = None
+
+
 class EvidenceBundle(EvidenceBaseModel):
     schema_version: str = "1.0"
     build_id: int
@@ -180,3 +187,4 @@ class EvidenceBundle(EvidenceBaseModel):
     bucket_2: ExecutionValidationEvidence
     bucket_3: RollbackRiskEvidence
     generation_metadata: EvidenceGenerationMetadata
+    source_ref_map: dict[str, EvidenceSourceRef] = Field(default_factory=dict)

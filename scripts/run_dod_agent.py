@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any
 
 try:
+    from backend.app.models.dod_contracts import normalize_dod_run_input, serialize_dod_run_output
     from backend.app.models.run_summary import DodRunSummary
     from backend.app.services.orchestration.dod_run_service import run_dod_agent
     from backend.app.utils.config import get_settings
@@ -20,6 +21,7 @@ except ModuleNotFoundError as exc:
     if str(repo_root) not in sys.path:
         sys.path.insert(0, str(repo_root))
 
+    from backend.app.models.dod_contracts import normalize_dod_run_input, serialize_dod_run_output
     from backend.app.models.run_summary import DodRunSummary
     from backend.app.services.orchestration.dod_run_service import run_dod_agent
     from backend.app.utils.config import get_settings
@@ -47,12 +49,15 @@ def run_from_args(args: argparse.Namespace) -> DodRunSummary:
     if not project:
         raise ValueError("project is required via --project or ADO_PROJECT.")
 
-    input_data: dict[str, Any] = {
-        "organization": organization,
-        "project": project,
-        "build_id": args.build_id,
-        "mode": args.mode or "local",
-    }
+    contract_input = normalize_dod_run_input(
+        {
+            "organization": organization,
+            "project": project,
+            "build_id": args.build_id,
+            "mode": args.mode or "local",
+        }
+    )
+    input_data: dict[str, Any] = contract_input.model_dump(mode="json")
     if args.confidence_threshold is not None:
         input_data["confidence_threshold"] = args.confidence_threshold
     if args.high_risk_confidence_threshold is not None:
@@ -105,6 +110,7 @@ def main() -> int:
         print(f"DoD agent run failed: {exc}")
         return 2
 
+    _ = serialize_dod_run_output(summary)
     print(format_summary(summary, _load_routing_payload(summary)))
     return 1 if summary.status == "failed" else 0
 

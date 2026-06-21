@@ -33,6 +33,18 @@ class Settings(BaseSettings):
     ADO_API_VERSION: str = "7.1"
 
     DATA_DIR: Path = Path("data")
+    DOD_STORAGE_BACKEND: str = "local_json"
+    DOD_COSMOS_EMULATOR_ENABLED: bool = False
+    COSMOS_LOCAL_ENDPOINT: str = "https://localhost:8081"
+    COSMOS_LOCAL_DATABASE: str = "dod_agent_local"
+    COSMOS_LOCAL_CONTAINER: str = "dod_runs"
+    COSMOS_LOCAL_AUTH_MODE: str = "emulator_key"
+    COSMOS_LOCAL_KEY: str | None = None
+    COSMOS_LOCAL_DISABLE_TLS_VERIFY: bool = False
+    DOD_GRAPH_NAME: str = "dod"
+    DOD_ASSISTANT_NAME: str = "dod"
+    LANGSMITH_TRACING: bool = False
+    DOD_TRACE_MODE: str = "summary"
     DOD_CONFIDENCE_THRESHOLD: float = 0.70
     DOD_HIGH_RISK_CONFIDENCE_THRESHOLD: float = 0.85
     DOD_SHORT_DESCRIPTION_MAX_LENGTH: int = 160

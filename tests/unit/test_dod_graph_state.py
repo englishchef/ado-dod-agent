@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
+import pytest
+from backend.app.graphs.dod_deployment_state import normalize_dod_input
 from backend.app.graphs.nodes import validate_input_node
 from backend.app.models.run_summary import DodRunSummary, RunIssue
 
@@ -61,3 +63,32 @@ def test_validate_input_node_initializes_run_state() -> None:
     assert state["run_id"].endswith("-123")
     assert state["started_at"]
     assert state["artifact_paths"] == {}
+
+
+def test_normalize_dod_input_defaults_mode_to_pipeline() -> None:
+    state = normalize_dod_input({"organization": "org", "project": "proj", "build_id": 123})
+
+    assert state["mode"] == "pipeline"
+
+
+def test_normalize_dod_input_initializes_collections() -> None:
+    state = normalize_dod_input({"organization": "org", "project": "proj", "build_id": 123})
+
+    assert state["artifact_paths"] == {}
+    assert state["warnings"] == []
+    assert state["errors"] == []
+
+
+def test_normalize_dod_input_rejects_missing_organization() -> None:
+    with pytest.raises(ValueError, match="organization"):
+        normalize_dod_input({"project": "proj", "build_id": 123})
+
+
+def test_normalize_dod_input_rejects_missing_project() -> None:
+    with pytest.raises(ValueError, match="project"):
+        normalize_dod_input({"organization": "org", "build_id": 123})
+
+
+def test_normalize_dod_input_rejects_non_positive_build_id() -> None:
+    with pytest.raises(ValueError, match="build_id"):
+        normalize_dod_input({"organization": "org", "project": "proj", "build_id": 0})

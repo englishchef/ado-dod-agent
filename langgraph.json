@@ -1,0 +1,10 @@
+{
+  "dependencies": [
+    "."
+  ],
+  "graphs": {
+    "dod": "backend/app/graphs/dod_deployment_graph.py:make_graph_dod"
+  },
+  "image_distro": "wolfi",
+  "env": ".env"
+}

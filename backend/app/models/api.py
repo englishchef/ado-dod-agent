@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
-from typing import Any, Literal
+from typing import Any
 
 from pydantic import BaseModel, Field
+
+from backend.app.models.dod_contracts import DoDRunMode
 
 
 class GenerateRunRequest(BaseModel):
@@ -13,8 +15,11 @@ class GenerateRunRequest(BaseModel):
     organization: str = Field(min_length=1)
     project: str = Field(min_length=1)
     build_id: int = Field(gt=0)
-    mode: Literal["local", "pipeline", "dev", "test"] = "pipeline"
+    mode: DoDRunMode = "pipeline"
     correlation_id: str | None = None
+    requested_by: str | None = None
+    source: str | None = None
+    metadata: dict[str, Any] = Field(default_factory=dict)
 
 
 class ApiIssue(BaseModel):

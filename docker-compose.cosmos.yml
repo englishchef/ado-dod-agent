@@ -1,0 +1,18 @@
+# LOCAL-ONLY / DEV-ONLY optional Cosmos DB emulator compose file.
+# Windows local development is usually better served by the installed Azure
+# Cosmos DB Emulator. See docs/local-cosmos-emulator.md before using this.
+services:
+  cosmos-local:
+    image: mcr.microsoft.com/cosmosdb/linux/azure-cosmos-emulator:latest
+    container_name: dod-cosmos-local
+    ports:
+      - "8081:8081"
+      - "10250-10255:10250-10255"
+    environment:
+      AZURE_COSMOS_EMULATOR_PARTITION_COUNT: "3"
+      AZURE_COSMOS_EMULATOR_ENABLE_DATA_PERSISTENCE: "true"
+    volumes:
+      - cosmos-local-data:/data/db
+
+volumes:
+  cosmos-local-data:

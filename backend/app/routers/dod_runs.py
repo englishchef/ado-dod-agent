@@ -19,6 +19,10 @@ from backend.app.models.api import (
     GenerateRunResponse,
 )
 from backend.app.models.canonical import CanonicalDodDocument
+from backend.app.models.dod_contracts import (
+    normalize_dod_run_input,
+    serialize_dod_run_output,
+)
 from backend.app.models.inputs import (
     BuildEvidenceInput,
     CollectRawInput,
@@ -39,6 +43,7 @@ from backend.app.services.normalizers.canonical import (
 )
 from backend.app.services.orchestration.dod_run_service import run_dod_agent
 from backend.app.services.storage.local_store import LocalJsonStore
+from backend.app.services.storage.storage_factory import get_storage_store
 from backend.app.utils.config import get_settings
 from backend.app.utils.constants import CORRELATION_ID_HEADER
 from backend.app.utils.logging import get_logger
@@ -56,10 +61,11 @@ def generate_run(
 
     started_at = time.perf_counter()
     correlation_id = request.correlation_id or x_correlation_id or str(uuid4())
-    input_data = request.model_dump()
-    input_data["correlation_id"] = correlation_id
+    contract_input = normalize_dod_run_input(
+        {**request.model_dump(mode="json"), "correlation_id": correlation_id}
+    )
     try:
-        summary = run_dod_agent(input_data)
+        summary = run_dod_agent(contract_input.model_dump(mode="json"))
     except Exception:
         logger.warning(
             "dod_generate_failed correlation_id=%s build_id=%s organization=%s project=%s",
@@ -75,7 +81,8 @@ def generate_run(
             correlation_id=correlation_id,
         )
 
-    response = _response_from_summary(summary, correlation_id)
+    contract_output = serialize_dod_run_output(summary, fallback_input=contract_input)
+    response = _response_from_contract(contract_output, contract_input)
     duration_ms = int((time.perf_counter() - started_at) * 1000)
     overall = _overall_confidence(summary.confidence)
     logger.info(
@@ -118,7 +125,7 @@ def orchestrate_run(request: GenerateRunInput) -> dict[str, Any]:
 def get_run_summary_artifact(build_id: int) -> ArtifactResponse:
     """Return persisted run summary without regenerating artifacts."""
 
-    store = LocalJsonStore(get_settings())
+    store = _storage_store()
     return _artifact_response(
         store=store,
         build_id=build_id,
@@ -132,7 +139,7 @@ def get_run_summary_artifact(build_id: int) -> ArtifactResponse:
 def get_payload_artifact(build_id: int) -> ArtifactResponse:
     """Return persisted ServiceNow-ready payload without regenerating artifacts."""
 
-    store = LocalJsonStore(get_settings())
+    store = _storage_store()
     return _artifact_response(
         store=store,
         build_id=build_id,
@@ -146,7 +153,7 @@ def get_payload_artifact(build_id: int) -> ArtifactResponse:
 def get_confidence_artifact(build_id: int) -> ArtifactResponse:
     """Return persisted confidence artifact without regenerating artifacts."""
 
-    store = LocalJsonStore(get_settings())
+    store = _storage_store()
     return _artifact_response(
         store=store,
         build_id=build_id,
@@ -160,7 +167,7 @@ def get_confidence_artifact(build_id: int) -> ArtifactResponse:
 def get_routing_decisions_artifact(build_id: int) -> ArtifactResponse:
     """Return persisted routing decisions without regenerating artifacts."""
 
-    store = LocalJsonStore(get_settings())
+    store = _storage_store()
     return _artifact_response(
         store=store,
         build_id=build_id,
@@ -174,7 +181,7 @@ def get_routing_decisions_artifact(build_id: int) -> ArtifactResponse:
 def get_traceability_report_artifact(build_id: int) -> ArtifactResponse:
     """Return persisted traceability report without regenerating artifacts."""
 
-    store = LocalJsonStore(get_settings())
+    store = _storage_store()
     return _artifact_response(
         store=store,
         build_id=build_id,
@@ -188,7 +195,7 @@ def get_traceability_report_artifact(build_id: int) -> ArtifactResponse:
 def get_rule_evaluation_artifact(build_id: int) -> ArtifactResponse:
     """Return persisted rule evaluation without regenerating artifacts."""
 
-    store = LocalJsonStore(get_settings())
+    store = _storage_store()
     return _artifact_response(
         store=store,
         build_id=build_id,
@@ -221,7 +228,7 @@ async def normalize_raw(request: NormalizeRawInput) -> NormalizeRawResponse:
     """Normalize previously collected raw metadata into canonical structure."""
 
     settings = get_settings()
-    store = LocalJsonStore(settings)
+    store = _storage_store(settings)
 
     source_path: str | None = request.raw_bundle_path
     try:
@@ -264,7 +271,7 @@ async def build_evidence(request: BuildEvidenceInput) -> BuildEvidenceResponse:
     """Build deterministic evidence buckets from canonical normalized metadata."""
 
     settings = get_settings()
-    store = LocalJsonStore(settings)
+    store = _storage_store(settings)
 
     source_path: str | None = request.canonical_path
     try:
@@ -350,6 +357,25 @@ def _response_from_summary(
     )
 
 
+def _response_from_contract(
+    output: Any,
+    input_data: Any,
+) -> GenerateRunResponse:
+    return GenerateRunResponse(
+        run_id=output.run_id or "",
+        correlation_id=input_data.correlation_id,
+        status=output.status,
+        build_id=output.build_id,
+        organization=input_data.organization,
+        project=input_data.project,
+        service_now_payload=output.service_now_payload or None,
+        confidence=output.confidence or None,
+        artifact_paths=output.artifact_paths,
+        warnings=[ApiIssue.model_validate(issue) for issue in output.warnings],
+        errors=[ApiIssue.model_validate(issue) for issue in output.errors],
+    )
+
+
 def _api_issue_from_run_issue(issue: RunIssue) -> ApiIssue:
     return ApiIssue(
         severity=issue.severity,
@@ -414,3 +440,10 @@ def _overall_confidence(confidence: dict[str, Any] | None) -> float | None:
     if isinstance(value, int | float):
         return float(value)
     return None
+
+
+def _storage_store(settings: Any | None = None) -> Any:
+    resolved = settings or get_settings()
+    if resolved.DOD_STORAGE_BACKEND == "local_json":
+        return LocalJsonStore(resolved)
+    return get_storage_store(resolved)

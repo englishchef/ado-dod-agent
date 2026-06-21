@@ -34,6 +34,7 @@ from backend.app.services.routing.prompt_strategy import select_prompt_strategy
 from backend.app.services.routing.risk_tier import assess_risk_tier
 from backend.app.services.rules.rule_engine import evaluate_rules
 from backend.app.services.storage.local_store import LocalJsonStore
+from backend.app.services.storage.storage_factory import get_storage_store
 from backend.app.services.validation.service import validate_and_assemble_outputs
 from backend.app.utils.config import get_settings
 
@@ -160,7 +161,7 @@ def normalize_canonical_node(state: DodGraphState) -> DodGraphState:
         return {}
 
     try:
-        store = LocalJsonStore(get_settings())
+        store = _storage_store()
         raw_bundle_path = state.get("artifact_paths", {}).get(
             "raw_bundle",
             store.raw_path(state["build_id"], "raw_bundle.json"),
@@ -201,7 +202,7 @@ def build_evidence_buckets_node(state: DodGraphState) -> DodGraphState:
         return {}
 
     try:
-        store = LocalJsonStore(get_settings())
+        store = _storage_store()
         canonical_path = state.get("artifact_paths", {}).get(
             "canonical",
             store.normalized_path(state["build_id"], "canonical.json"),
@@ -390,7 +391,7 @@ def validate_outputs_node(state: DodGraphState) -> DodGraphState:
         return {}
 
     try:
-        store = LocalJsonStore(get_settings())
+        store = _storage_store()
         llm_outputs_path = state.get("artifact_paths", {}).get(
             "llm_outputs",
             store.output_path(state["build_id"], "llm_outputs.json"),
@@ -577,7 +578,7 @@ def evaluate_rules_node(state: DodGraphState) -> DodGraphState:
         return {}
 
     try:
-        store = LocalJsonStore(get_settings())
+        store = _storage_store()
         build_id = int(state["build_id"])
         evidence_bundle_path = state.get("artifact_paths", {}).get(
             "evidence_bundle",
@@ -679,7 +680,7 @@ def evaluate_rules_node(state: DodGraphState) -> DodGraphState:
 def persist_routing_decisions_node(state: DodGraphState) -> DodGraphState:
     """Persist Phase 7B routing decisions under data/output/{build_id}."""
 
-    store = LocalJsonStore(get_settings())
+    store = _storage_store()
     build_id = int(state.get("build_id") or 0)
     bundle = RoutingDecisionBundle(
         build_id=build_id,
@@ -704,7 +705,7 @@ def persist_routing_decisions_node(state: DodGraphState) -> DodGraphState:
 def persist_run_summary_node(state: DodGraphState) -> DodGraphState:
     """Persist final run summary under data/output/{build_id}/run_summary.json."""
 
-    store = LocalJsonStore(get_settings())
+    store = _storage_store()
     now = _utc_now()
     started_at = _parse_datetime(state.get("started_at")) or now
     completed_at = _parse_datetime(state.get("completed_at"))
@@ -739,7 +740,7 @@ def persist_run_summary_node(state: DodGraphState) -> DodGraphState:
 
 
 def _generate_llm_outputs_once(state: DodGraphState) -> DodGraphState:
-    store = LocalJsonStore(get_settings())
+    store = _storage_store()
     evidence_bundle_path = state.get("artifact_paths", {}).get(
         "evidence_bundle",
         store.evidence_path(state["build_id"], "evidence_bundle.json"),
@@ -791,8 +792,9 @@ def _load_evidence_bundle_from_state(state: DodGraphState) -> dict[str, Any]:
     evidence = state.get("evidence_result")
     if isinstance(evidence, dict):
         return evidence
-    store = LocalJsonStore(get_settings())
-    return store.load_evidence_bundle(state["build_id"])
+    store = _storage_store()
+    payload = store.load_evidence_bundle(state["build_id"])
+    return payload if isinstance(payload, dict) else {}
 
 
 def _load_optional_dict(load: Any, build_id: int) -> dict[str, Any] | None:
@@ -801,6 +803,13 @@ def _load_optional_dict(load: Any, build_id: int) -> dict[str, Any] | None:
     except FileNotFoundError:
         return None
     return payload if isinstance(payload, dict) else None
+
+
+def _storage_store() -> Any:
+    settings = get_settings()
+    if settings.DOD_STORAGE_BACKEND == "local_json":
+        return LocalJsonStore(settings)
+    return get_storage_store(settings)
 
 
 def _routing_context_from_state(state: DodGraphState) -> dict[str, Any] | None:

@@ -25,6 +25,7 @@ from backend.app.services.collectors.execution_context import collect_execution_
 from backend.app.services.collectors.quality_context import collect_quality_context
 from backend.app.services.collectors.run_context import collect_run_context
 from backend.app.services.storage.local_store import LocalJsonStore
+from backend.app.services.storage.storage_factory import get_storage_store
 from backend.app.utils.config import get_settings
 from backend.app.utils.logging import get_logger
 
@@ -74,7 +75,11 @@ async def collect_raw_metadata(
 
     request = _as_collect_input(input_model)
     settings = get_settings()
-    store = LocalJsonStore(settings)
+    store = (
+        LocalJsonStore(settings)
+        if settings.DOD_STORAGE_BACKEND == "local_json"
+        else get_storage_store(settings)
+    )
     store.ensure_run_dirs(request.build_id)
 
     collected_at = datetime.now(UTC)

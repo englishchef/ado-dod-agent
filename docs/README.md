@@ -15,11 +15,11 @@ Python backend for collecting Azure DevOps build metadata and preparing Definiti
   bucket retry, and confidence-based final status
 - Phase 8: FastAPI pipeline-facing generation endpoint and read-only artifact retrieval
 - Phase 9: deterministic post-generation rule evaluation and test-evidence quality scoring
+- Phase 10C: official artifact storage abstraction with local JSON and Cosmos DB backends
 
 Out of scope:
 - ServiceNow writeback
 - production ServiceNow/API writeback integration
-- Cosmos DB
 - model fallback
 - historical knowledge fallback
 - parallel generation
@@ -379,7 +379,7 @@ Status meanings:
 Phase 7A scope:
 - Basic failure/continue branching only.
 - No ServiceNow writeback.
-- No Cosmos DB persistence.
+- Cosmos DB persistence is added later through the Phase 10C artifact store.
 - No model fallback.
 - No parallel bucket generation.
 - No historical knowledge fallback.

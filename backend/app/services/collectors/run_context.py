@@ -7,13 +7,13 @@ from typing import Any
 from backend.app.models.raw import CollectorError, CollectorStatus
 from backend.app.services.ado.base import AzureDevOpsClientError
 from backend.app.services.ado.build_client import AzureDevOpsBuildClient
-from backend.app.services.storage.local_store import LocalJsonStore
+from backend.app.services.storage.artifact_store import ArtifactStore
 
 
 async def collect_run_context(
     build_id: int,
     build_client: AzureDevOpsBuildClient,
-    store: LocalJsonStore,
+    store: ArtifactStore,
 ) -> tuple[dict[str, Any], CollectorStatus, list[CollectorError], dict[str, str]]:
     """Collect mandatory build metadata; raise on failure."""
 

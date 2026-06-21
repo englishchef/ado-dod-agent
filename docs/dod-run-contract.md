@@ -92,6 +92,5 @@ dod: backend/app/graphs/dod_deployment_graph.py:make_graph_dod
 The graph calls only the existing `run_dod_agent` orchestration service. It does
 not directly call Azure DevOps, Azure OpenAI, Cosmos DB, or ServiceNow.
 
-Cosmos DB implementation is owned separately and is not changed by this
-contract. Local Cosmos emulator support and ServiceNow writeback remain out of
-scope for this phase.
+Cosmos artifact persistence is selected through `DOD_STORAGE_BACKEND`. The graph
+and contract layer do not call Cosmos directly.

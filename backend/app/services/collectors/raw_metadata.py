@@ -24,6 +24,7 @@ from backend.app.services.collectors.change_context import collect_change_contex
 from backend.app.services.collectors.execution_context import collect_execution_context
 from backend.app.services.collectors.quality_context import collect_quality_context
 from backend.app.services.collectors.run_context import collect_run_context
+from backend.app.services.storage.artifact_store import ArtifactStore
 from backend.app.services.storage.local_store import LocalJsonStore
 from backend.app.services.storage.storage_factory import get_storage_store
 from backend.app.utils.config import get_settings
@@ -75,7 +76,7 @@ async def collect_raw_metadata(
 
     request = _as_collect_input(input_model)
     settings = get_settings()
-    store = (
+    store: ArtifactStore = (
         LocalJsonStore(settings)
         if settings.DOD_STORAGE_BACKEND == "local_json"
         else get_storage_store(settings)

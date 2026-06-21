@@ -175,12 +175,11 @@ LangGraph server.
 
 ## Scope Notes
 
-- Existing Cosmos DB implementation is owned separately and should not be
-  overwritten by this adapter or contract layer.
-- Local Cosmos emulator support is available for developer validation only via
-  `DOD_STORAGE_BACKEND=cosmos_local`.
-- Enterprise deployment should use the org-owned Cosmos implementation. Do not
-  overwrite org Cosmos files with the local-only adapter.
+- The `dod` graph uses the storage backend selected by configuration.
+- Local JSON and Cosmos artifact storage are supported.
+- Enterprise deployment should use `DOD_STORAGE_BACKEND=cosmos`.
+- Future enterprise auth should prefer `COSMOS_AUTH_MODE=default_credential`.
+- Local Cosmos emulator runs use `COSMOS_AUTH_MODE=emulator_key`.
 - ServiceNow writeback is out of scope for this phase.
 - A2A, MCP, cron/listener automation, enterprise RBAC/auth middleware, and full
   deployment pipeline YAML are out of scope for this phase.
@@ -188,17 +187,14 @@ LangGraph server.
 ## Local Storage Backends
 
 - `local_json`: existing file-backed local storage under `DATA_DIR`
-- `cosmos_local`: local-only Cosmos DB emulator adapter
+- `cosmos`: Cosmos-backed artifact store
 
-The local Cosmos adapter is for laptop validation only. See
-`docs/local-cosmos-emulator.md`.
+See `docs/cosmos-artifact-store.md`.
 
-## Org Merge Guidance
+## Cosmos Guidance
 
-- Merge docs, scripts, and config examples only as appropriate.
-- Do not merge `backend/app/services/storage/cosmos_local_store.py` if the org
-  repo already has an enterprise Cosmos implementation.
 - Coordinate with the Cosmos owner before changing schema, partition key,
   database name, container name, indexing, auth, or retry behavior.
-- In the org repo, map `DOD_STORAGE_BACKEND` to the org-owned Cosmos backend
-  rather than using `cosmos_local` as the enterprise implementation.
+- The official DoD artifact document partition key is `/run_id`.
+- Graph nodes, FastAPI routers, rule engine, validators, and prompt code should
+  not call Cosmos directly.

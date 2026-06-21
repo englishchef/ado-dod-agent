@@ -34,11 +34,19 @@ class Settings(BaseSettings):
 
     DATA_DIR: Path = Path("data")
     DOD_STORAGE_BACKEND: str = "local_json"
+    COSMOS_AUTH_MODE: str | None = None
+    COSMOS_ENDPOINT: str | None = None
+    COSMOS_KEY: str | None = None
+    COSMOS_DATABASE: str | None = None
+    COSMOS_CONTAINER: str | None = None
+    COSMOS_DISABLE_TLS_VERIFY: bool = False
+
+    # Deprecated Phase 10C-local aliases. Kept only to avoid breaking local .env.local files.
     DOD_COSMOS_EMULATOR_ENABLED: bool = False
-    COSMOS_LOCAL_ENDPOINT: str = "https://localhost:8081"
-    COSMOS_LOCAL_DATABASE: str = "dod_agent_local"
-    COSMOS_LOCAL_CONTAINER: str = "dod_runs"
-    COSMOS_LOCAL_AUTH_MODE: str = "emulator_key"
+    COSMOS_LOCAL_ENDPOINT: str | None = None
+    COSMOS_LOCAL_DATABASE: str | None = None
+    COSMOS_LOCAL_CONTAINER: str | None = None
+    COSMOS_LOCAL_AUTH_MODE: str | None = None
     COSMOS_LOCAL_KEY: str | None = None
     COSMOS_LOCAL_DISABLE_TLS_VERIFY: bool = False
     DOD_GRAPH_NAME: str = "dod"
@@ -61,6 +69,42 @@ class Settings(BaseSettings):
 
         root = self.DATA_DIR
         return (root / "raw", root / "normalized", root / "evidence", root / "output")
+
+    @property
+    def resolved_cosmos_auth_mode(self) -> str:
+        """Return official Cosmos auth mode, honoring deprecated local aliases."""
+
+        return self.COSMOS_AUTH_MODE or self.COSMOS_LOCAL_AUTH_MODE or "emulator_key"
+
+    @property
+    def resolved_cosmos_endpoint(self) -> str | None:
+        """Return official Cosmos endpoint, honoring deprecated local aliases."""
+
+        return self.COSMOS_ENDPOINT or self.COSMOS_LOCAL_ENDPOINT
+
+    @property
+    def resolved_cosmos_key(self) -> str | None:
+        """Return official Cosmos key, honoring deprecated local aliases."""
+
+        return self.COSMOS_KEY or self.COSMOS_LOCAL_KEY
+
+    @property
+    def resolved_cosmos_database(self) -> str | None:
+        """Return official Cosmos database, honoring deprecated local aliases."""
+
+        return self.COSMOS_DATABASE or self.COSMOS_LOCAL_DATABASE
+
+    @property
+    def resolved_cosmos_container(self) -> str | None:
+        """Return official Cosmos container, honoring deprecated local aliases."""
+
+        return self.COSMOS_CONTAINER or self.COSMOS_LOCAL_CONTAINER
+
+    @property
+    def resolved_cosmos_disable_tls_verify(self) -> bool:
+        """Return whether Cosmos TLS verification is disabled."""
+
+        return self.COSMOS_DISABLE_TLS_VERIFY or self.COSMOS_LOCAL_DISABLE_TLS_VERIFY
 
 
 @lru_cache(maxsize=1)

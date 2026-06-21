@@ -1,10 +1,4 @@
-"""LOCAL-ONLY / DEV-ONLY Cosmos DB emulator artifact store.
-
-This adapter is for local Cosmos DB emulator testing.
-Do not merge this file into the org repo if the org repo already has an
-enterprise Cosmos implementation. Use the org-owned Cosmos storage abstraction
-in enterprise.
-"""
+"""Official Cosmos DB artifact store for DoD run artifacts."""
 
 from __future__ import annotations
 
@@ -14,20 +8,28 @@ from typing import Any
 
 from backend.app.utils.config import Settings, get_settings
 
-LOCAL_COSMOS_PARTITION_KEY = "/run_id"
+COSMOS_PARTITION_KEY = "/run_id"
+COSMOS_SCHEMA_VERSION = "1.0"
 
 
-class CosmosLocalStore:
-    """Minimal local-only artifact store for the Cosmos DB emulator."""
+class CosmosArtifactStore:
+    """Cosmos-backed artifact store for local emulator and enterprise runtime."""
 
-    def __init__(self, settings: Settings | None = None) -> None:
+    def __init__(self, settings: Settings | None = None, run_id: str | None = None) -> None:
         self.settings = settings or get_settings()
+        self.default_run_id = run_id
         self._client: Any | None = None
         self._database: Any | None = None
         self._container: Any | None = None
 
+    @staticmethod
+    def document_id(run_id: str, artifact_type: str) -> str:
+        """Return the stable Cosmos document id for an artifact."""
+
+        return f"{run_id}:{artifact_type}"
+
     def initialize(self) -> None:
-        """Create the local emulator database and container if missing."""
+        """Create the configured database and container if missing."""
 
         _ = self._get_container(create=True)
 
@@ -38,16 +40,17 @@ class CosmosLocalStore:
         artifact_type: str,
         content: dict[str, Any],
     ) -> str:
-        """Save or replace one local artifact document."""
+        """Upsert one artifact document and return its logical reference."""
 
         now = datetime.now(UTC).isoformat().replace("+00:00", "Z")
-        document_id = f"{run_id}:{artifact_type}"
+        document_id = self.document_id(run_id, artifact_type)
         document = {
             "id": document_id,
             "run_id": run_id,
             "build_id": int(build_id),
             "artifact_type": artifact_type,
             "content": _make_json_safe(content),
+            "schema_version": COSMOS_SCHEMA_VERSION,
             "created_at": now,
             "updated_at": now,
         }
@@ -64,15 +67,14 @@ class CosmosLocalStore:
     def load_artifact(self, run_id: str, artifact_type: str) -> dict[str, Any]:
         """Load one artifact by run id and artifact type."""
 
-        document_id = f"{run_id}:{artifact_type}"
         document = self._get_container(create=False).read_item(
-            item=document_id,
+            item=self.document_id(run_id, artifact_type),
             partition_key=run_id,
         )
         return _content_from_document(document)
 
     def load_artifact_by_build_id(self, build_id: int, artifact_type: str) -> dict[str, Any]:
-        """Load the latest matching artifact for a build id."""
+        """Load the newest matching artifact for a build id."""
 
         query = (
             "SELECT * FROM c WHERE c.build_id = @build_id "
@@ -91,7 +93,7 @@ class CosmosLocalStore:
         )
         if not items:
             raise FileNotFoundError(
-                f"Cosmos local artifact not found for build_id={build_id}, "
+                f"Cosmos artifact not found for build_id={build_id}, "
                 f"artifact_type={artifact_type}."
             )
         return _content_from_document(items[0])
@@ -112,13 +114,24 @@ class CosmosLocalStore:
             if isinstance(item, dict) and item.get("artifact_type")
         )
 
-    def delete_artifact(self, run_id: str, artifact_type: str) -> None:
-        """Delete one local smoke-test artifact if it exists."""
+    def save_run_summary(self, run_id: str, build_id: int, content: dict[str, Any]) -> str:
+        """Save a run summary artifact."""
 
-        document_id = f"{run_id}:{artifact_type}"
+        return self.save_artifact(run_id, build_id, "run_summary", content)
+
+    def load_run_summary(self, run_id_or_build_id: str | int) -> dict[str, Any]:
+        """Load run summary by run id or by build id for endpoint compatibility."""
+
+        if isinstance(run_id_or_build_id, int):
+            return self.load_artifact_by_build_id(run_id_or_build_id, "run_summary")
+        return self.load_artifact(run_id_or_build_id, "run_summary")
+
+    def delete_artifact(self, run_id: str, artifact_type: str) -> None:
+        """Delete one smoke-test artifact if it exists."""
+
         try:
             self._get_container(create=False).delete_item(
-                item=document_id,
+                item=self.document_id(run_id, artifact_type),
                 partition_key=run_id,
             )
         except Exception:
@@ -127,23 +140,27 @@ class CosmosLocalStore:
     def ensure_run_dirs(self, build_id: int) -> Path:
         """Compatibility no-op for file-backed collection code."""
 
-        return Path(f"cosmos_local/raw/{build_id}")
+        return Path(f"cosmos/artifacts/{build_id}")
 
     def raw_path(self, build_id: int, filename: str) -> str:
-        return _compat_uri(self.settings, build_id, "raw", filename)
+        run_id = _run_id_for_build(self.default_run_id, build_id)
+        return _compat_uri(self.settings, run_id, filename)
 
     def normalized_path(self, build_id: int, filename: str) -> str:
-        return _compat_uri(self.settings, build_id, "normalized", filename)
+        run_id = _run_id_for_build(self.default_run_id, build_id)
+        return _compat_uri(self.settings, run_id, filename)
 
     def evidence_path(self, build_id: int, filename: str) -> str:
-        return _compat_uri(self.settings, build_id, "evidence", filename)
+        run_id = _run_id_for_build(self.default_run_id, build_id)
+        return _compat_uri(self.settings, run_id, filename)
 
     def output_path(self, build_id: int, filename: str) -> str:
-        return _compat_uri(self.settings, build_id, "output", filename)
+        run_id = _run_id_for_build(self.default_run_id, build_id)
+        return _compat_uri(self.settings, run_id, filename)
 
     def save_json(self, relative_path: str, payload: Any) -> str:
         build_id, artifact_type = _artifact_from_relative_path(relative_path)
-        run_id = _run_id_from_payload(payload, build_id)
+        run_id = _run_id_from_payload(payload, self.default_run_id, build_id)
         content = payload if isinstance(payload, dict) else {"value": _make_json_safe(payload)}
         return self.save_artifact(run_id, build_id, artifact_type, content)
 
@@ -179,7 +196,8 @@ class CosmosLocalStore:
         return self.save_output_json(build_id, "rule_evaluation.json", payload)
 
     def save_run_summary_json(self, build_id: int, payload: Any) -> str:
-        return self.save_output_json(build_id, "run_summary.json", payload)
+        run_id = _run_id_from_payload(payload, self.default_run_id, build_id)
+        return self.save_run_summary(run_id, build_id, payload if isinstance(payload, dict) else {})
 
     def traceability_report_path(self, build_id: int) -> str:
         return self.output_path(build_id, "traceability_report.json")
@@ -221,9 +239,6 @@ class CosmosLocalStore:
     def load_validated_output(self, build_id: int) -> dict[str, Any]:
         return self.load_artifact_by_build_id(build_id, "validated_output")
 
-    def load_run_summary(self, build_id: int) -> dict[str, Any]:
-        return self.load_artifact_by_build_id(build_id, "run_summary")
-
     def load_routing_decisions(self, build_id: int) -> dict[str, Any]:
         return self.load_artifact_by_build_id(build_id, "routing_decisions")
 
@@ -241,7 +256,9 @@ class CosmosLocalStore:
         if self._container is not None:
             return self._container
 
-        endpoint, key = _required_cosmos_local_config(self.settings)
+        endpoint, credential, database_name, container_name = _required_cosmos_config(
+            self.settings
+        )
         try:
             from azure.cosmos import CosmosClient, PartitionKey  # type: ignore[import-untyped]
         except ModuleNotFoundError as exc:
@@ -249,51 +266,66 @@ class CosmosLocalStore:
                 raise
             raise RuntimeError(
                 "azure-cosmos is not installed. Install project dependencies before using "
-                "DOD_STORAGE_BACKEND=cosmos_local."
+                "DOD_STORAGE_BACKEND=cosmos."
             ) from exc
 
         client_kwargs: dict[str, Any] = {}
-        if self.settings.COSMOS_LOCAL_DISABLE_TLS_VERIFY:
+        if self.settings.resolved_cosmos_disable_tls_verify:
             client_kwargs["connection_verify"] = False
-        self._client = CosmosClient(endpoint, credential=key, **client_kwargs)
+        self._client = CosmosClient(endpoint, credential=credential, **client_kwargs)
         if create:
-            self._database = self._client.create_database_if_not_exists(
-                id=self.settings.COSMOS_LOCAL_DATABASE
-            )
+            self._database = self._client.create_database_if_not_exists(id=database_name)
             self._container = self._database.create_container_if_not_exists(
-                id=self.settings.COSMOS_LOCAL_CONTAINER,
-                partition_key=PartitionKey(path=LOCAL_COSMOS_PARTITION_KEY),
+                id=container_name,
+                partition_key=PartitionKey(path=COSMOS_PARTITION_KEY),
             )
         else:
-            self._database = self._client.get_database_client(
-                self.settings.COSMOS_LOCAL_DATABASE
-            )
-            self._container = self._database.get_container_client(
-                self.settings.COSMOS_LOCAL_CONTAINER
-            )
+            self._database = self._client.get_database_client(database_name)
+            self._container = self._database.get_container_client(container_name)
         return self._container
 
 
-def _required_cosmos_local_config(settings: Settings) -> tuple[str, str]:
-    if settings.COSMOS_LOCAL_AUTH_MODE != "emulator_key":
-        raise ValueError("COSMOS_LOCAL_AUTH_MODE must be emulator_key for cosmos_local.")
-    endpoint = settings.COSMOS_LOCAL_ENDPOINT
-    key = settings.COSMOS_LOCAL_KEY
+def _required_cosmos_config(settings: Settings) -> tuple[str, Any, str, str]:
+    auth_mode = settings.resolved_cosmos_auth_mode
+    endpoint = settings.resolved_cosmos_endpoint
+    database_name = settings.resolved_cosmos_database
+    container_name = settings.resolved_cosmos_container
+    if auth_mode not in {"emulator_key", "key", "default_credential"}:
+        raise ValueError(
+            "COSMOS_AUTH_MODE must be one of: emulator_key, key, default_credential."
+        )
     if not endpoint:
-        raise ValueError("COSMOS_LOCAL_ENDPOINT is required for cosmos_local.")
-    if not key or key == "<local-emulator-key-only>":
-        raise ValueError("COSMOS_LOCAL_KEY is required for cosmos_local.")
-    return endpoint, key
+        raise ValueError("COSMOS_ENDPOINT is required when DOD_STORAGE_BACKEND=cosmos.")
+    if not database_name:
+        raise ValueError("COSMOS_DATABASE is required when DOD_STORAGE_BACKEND=cosmos.")
+    if not container_name:
+        raise ValueError("COSMOS_CONTAINER is required when DOD_STORAGE_BACKEND=cosmos.")
+    if auth_mode in {"emulator_key", "key"}:
+        key = settings.resolved_cosmos_key
+        if not key or key == "<local-emulator-key-only>":
+            raise ValueError(f"COSMOS_KEY is required when COSMOS_AUTH_MODE={auth_mode}.")
+        return endpoint, key, database_name, container_name
+
+    try:
+        from azure.identity import DefaultAzureCredential
+    except ModuleNotFoundError as exc:
+        if exc.name != "azure":
+            raise
+        raise RuntimeError(
+            "azure-identity is not installed. Install project dependencies before using "
+            "COSMOS_AUTH_MODE=default_credential."
+        ) from exc
+    return endpoint, DefaultAzureCredential(), database_name, container_name
 
 
 def _artifact_from_relative_path(relative_path: str) -> tuple[int, str]:
     parts = Path(relative_path).parts
     if len(parts) < 3:
-        raise ValueError(f"Unsupported artifact path for cosmos_local: {relative_path}")
+        raise ValueError(f"Unsupported artifact path for Cosmos: {relative_path}")
     try:
         build_id = int(parts[1])
     except ValueError as exc:
-        raise ValueError(f"Unsupported artifact path for cosmos_local: {relative_path}") from exc
+        raise ValueError(f"Unsupported artifact path for Cosmos: {relative_path}") from exc
     return build_id, _artifact_type_from_filename(parts[-1])
 
 
@@ -301,12 +333,16 @@ def _artifact_type_from_filename(filename: str) -> str:
     return Path(filename).stem
 
 
-def _run_id_from_payload(payload: Any, build_id: int) -> str:
+def _run_id_for_build(default_run_id: str | None, build_id: int) -> str:
+    return default_run_id or f"build:{build_id}"
+
+
+def _run_id_from_payload(payload: Any, default_run_id: str | None, build_id: int) -> str:
     if isinstance(payload, dict):
         candidate = payload.get("run_id") or payload.get("collection_run_id")
         if isinstance(candidate, str) and candidate:
             return candidate
-    return f"build:{build_id}"
+    return _run_id_for_build(default_run_id, build_id)
 
 
 def _content_from_document(document: Any) -> dict[str, Any]:
@@ -317,18 +353,12 @@ def _content_from_document(document: Any) -> dict[str, Any]:
 
 
 def _cosmos_uri(settings: Settings, run_id: str, artifact_type: str) -> str:
-    return (
-        f"cosmos-local://{settings.COSMOS_LOCAL_DATABASE}/"
-        f"{settings.COSMOS_LOCAL_CONTAINER}/{run_id}/{artifact_type}"
-    )
+    container_name = settings.resolved_cosmos_container or "artifacts"
+    return f"cosmos://{container_name}/{run_id}/{artifact_type}"
 
 
-def _compat_uri(settings: Settings, build_id: int, area: str, filename: str) -> str:
-    artifact_type = _artifact_type_from_filename(filename)
-    return (
-        f"cosmos-local://{settings.COSMOS_LOCAL_DATABASE}/"
-        f"{settings.COSMOS_LOCAL_CONTAINER}/build:{build_id}/{area}/{artifact_type}"
-    )
+def _compat_uri(settings: Settings, run_id: str, filename: str) -> str:
+    return _cosmos_uri(settings, run_id, _artifact_type_from_filename(filename))
 
 
 def _make_json_safe(value: Any) -> Any:

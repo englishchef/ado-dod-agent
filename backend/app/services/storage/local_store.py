@@ -79,6 +79,75 @@ class LocalJsonStore:
         target_path = self._base_dir / relative_path
         return json.loads(target_path.read_text(encoding="utf-8"))
 
+    def save_artifact(
+        self,
+        run_id: str,
+        build_id: int,
+        artifact_type: str,
+        content: dict[str, Any],
+    ) -> str:
+        """Save one artifact using the shared ArtifactStore contract."""
+
+        _ = run_id
+        return self.save_output_json(build_id, f"{artifact_type}.json", content)
+
+    def load_artifact(self, run_id: str, artifact_type: str) -> dict[str, Any]:
+        """Load one artifact by run id when the run summary has local paths."""
+
+        summary = self._load_run_summary_by_run_id(run_id)
+        artifact_paths = summary.get("artifact_paths") if isinstance(summary, dict) else None
+        path = artifact_paths.get(artifact_type) if isinstance(artifact_paths, dict) else None
+        if not isinstance(path, str):
+            raise FileNotFoundError(
+                f"Local artifact path not found for run_id={run_id}, artifact_type={artifact_type}."
+            )
+        payload = json.loads(Path(path).read_text(encoding="utf-8"))
+        return payload if isinstance(payload, dict) else {}
+
+    def load_artifact_by_build_id(self, build_id: int, artifact_type: str) -> dict[str, Any]:
+        """Load one artifact by build id using local output filenames."""
+
+        loaders = {
+            "raw_bundle": self.load_raw_bundle,
+            "canonical": self.load_canonical,
+            "evidence_bundle": self.load_evidence_bundle,
+            "llm_outputs": self.load_llm_outputs,
+            "validated_output": self.load_validated_output,
+            "service_now_payload": self.load_service_now_payload,
+            "confidence": self.load_confidence,
+            "routing_decisions": self.load_routing_decisions,
+            "traceability_report": self.load_traceability_report,
+            "rule_evaluation": self.load_rule_evaluation,
+            "run_summary": self.load_run_summary,
+        }
+        load = loaders.get(artifact_type)
+        if load is None:
+            raise FileNotFoundError(f"Unsupported local artifact_type={artifact_type}.")
+        return load(build_id)
+
+    def list_artifacts(self, run_id: str) -> list[str]:
+        """List artifact types referenced by a local run summary."""
+
+        summary = self._load_run_summary_by_run_id(run_id)
+        artifact_paths = summary.get("artifact_paths") if isinstance(summary, dict) else None
+        if not isinstance(artifact_paths, dict):
+            return []
+        return sorted(str(key) for key in artifact_paths)
+
+    def save_run_summary(self, run_id: str, build_id: int, content: dict[str, Any]) -> str:
+        """Save run summary through the shared ArtifactStore contract."""
+
+        payload = {**content, "run_id": run_id}
+        return self.save_run_summary_json(build_id, payload)
+
+    def load_run_summary(self, run_id_or_build_id: str | int) -> dict[str, Any]:
+        """Load run summary by build id or, for ArtifactStore, by run id."""
+
+        if isinstance(run_id_or_build_id, int):
+            payload = self.load_json(f"output/{run_id_or_build_id}/run_summary.json")
+            return payload if isinstance(payload, dict) else {}
+        return self._load_run_summary_by_run_id(run_id_or_build_id)
+
     def save_normalized_json(self, build_id: int, filename: str, payload: Any) -> str:
         """Save normalized payload under `data/normalized/{build_id}`."""
 
@@ -203,12 +272,6 @@ class LocalJsonStore:
         payload = self.load_json(f"output/{build_id}/validated_output.json")
         return payload if isinstance(payload, dict) else {}
 
-    def load_run_summary(self, build_id: int) -> dict[str, Any]:
-        """Load Phase 7A run summary payload for a build id."""
-
-        payload = self.load_json(f"output/{build_id}/run_summary.json")
-        return payload if isinstance(payload, dict) else {}
-
     def load_routing_decisions(self, build_id: int) -> dict[str, Any]:
         """Load Phase 7B routing decisions payload for a build id."""
 
@@ -225,4 +288,11 @@ class LocalJsonStore:
         """Return whether an output artifact exists for a build id."""
 
         return (self._base_dir / "output" / str(build_id) / artifact_name).exists()
+
+    def _load_run_summary_by_run_id(self, run_id: str) -> dict[str, Any]:
+        for summary_path in (self._base_dir / "output").glob("*/run_summary.json"):
+            payload = json.loads(summary_path.read_text(encoding="utf-8"))
+            if isinstance(payload, dict) and payload.get("run_id") == run_id:
+                return payload
+        raise FileNotFoundError(f"Local run summary not found for run_id={run_id}.")
 

@@ -9,7 +9,7 @@ from backend.app.services.ado.base import AzureDevOpsClientError
 from backend.app.services.ado.build_client import AzureDevOpsBuildClient
 from backend.app.services.ado.git_client import AzureDevOpsGitClient
 from backend.app.services.ado.workitem_client import AzureDevOpsWorkItemClient
-from backend.app.services.storage.local_store import LocalJsonStore
+from backend.app.services.storage.artifact_store import ArtifactStore
 
 
 def _extract_work_item_ids(work_item_refs_payload: dict[str, Any]) -> list[int]:
@@ -78,7 +78,7 @@ async def collect_change_context(
     build_client: AzureDevOpsBuildClient,
     work_item_client: AzureDevOpsWorkItemClient,
     git_client: AzureDevOpsGitClient,
-    store: LocalJsonStore,
+    store: ArtifactStore,
 ) -> tuple[dict[str, Any], CollectorStatus, list[CollectorError], dict[str, str]]:
     """Collect work-item refs, changes, hydrated items, and PR metadata."""
 

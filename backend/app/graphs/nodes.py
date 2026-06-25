@@ -714,17 +714,56 @@ def persist_run_summary_node(state: DodGraphState) -> DodGraphState:
     build_id = int(state.get("build_id") or 0)
     artifact_paths = dict(state.get("artifact_paths") or {})
     artifact_paths.setdefault("run_summary", store.run_summary_path(build_id))
+    input_data = dict(state.get("input") or {})
+    input_metadata = dict(input_data.get("metadata") or {})
+    rule_evaluation = (
+        state.get("rule_evaluation") if isinstance(state.get("rule_evaluation"), dict) else {}
+    )
+    rule_summary = (
+        rule_evaluation.get("summary") if isinstance(rule_evaluation.get("summary"), dict) else {}
+    )
+    confidence = state.get("confidence") if isinstance(state.get("confidence"), dict) else {}
 
     summary = DodRunSummary(
         run_id=str(state.get("run_id") or f"dod-run-{_timestamp_for_id(started_at)}-{build_id}"),
         build_id=build_id,
         organization=str(state.get("organization") or ""),
         project=str(state.get("project") or ""),
+        correlation_id=_optional_text(
+            input_data.get("correlation_id") or input_metadata.get("correlation_id")
+        ),
+        pipeline_id=_optional_text(
+            input_data.get("pipeline_id") or input_metadata.get("pipeline_id")
+        ),
+        pipeline_name=_optional_text(
+            input_data.get("pipeline_name") or input_metadata.get("pipeline_name")
+        ),
+        build_number=_optional_text(
+            input_data.get("build_number") or input_metadata.get("build_number")
+        ),
+        branch=_optional_text(input_data.get("branch") or input_metadata.get("branch")),
+        requested_by=_optional_text(
+            input_data.get("requested_by") or input_metadata.get("requested_by")
+        ),
+        source=_optional_text(input_data.get("source") or input_metadata.get("source")),
+        mode=_optional_text(state.get("mode") or input_data.get("mode")),
         status=str(state.get("status") or STATUS_FAILED),
+        rule_recommended_status=_optional_text(rule_summary.get("recommended_status")),
+        highest_rule_severity=_optional_text(rule_summary.get("highest_severity")),
+        final_confidence=_optional_float(confidence.get("overall")),
+        test_completeness_score=(
+            dict(rule_evaluation["test_completeness_score"])
+            if isinstance(rule_evaluation.get("test_completeness_score"), dict)
+            else None
+        ),
+        storage_backend=get_settings().DOD_STORAGE_BACKEND,
         started_at=started_at,
         completed_at=completed_at,
+        duration_ms=_duration_ms(started_at, completed_at),
+        phase_durations_ms=_int_dict(state.get("phase_durations_ms")),
+        artifact_count=len(artifact_paths),
         service_now_payload=state.get("service_now_payload"),
-        confidence=state.get("confidence"),
+        confidence=confidence or state.get("confidence"),
         artifact_paths=artifact_paths,
         warnings=[_run_issue_from_dict(item) for item in state.get("warnings", [])],
         errors=[_run_issue_from_dict(item) for item in state.get("errors", [])],
@@ -957,6 +996,39 @@ def _coerce_float(value: Any) -> float | None:
         except ValueError:
             return None
     return None
+
+
+def _optional_text(value: Any) -> str | None:
+    if value is None:
+        return None
+    text = str(value).strip()
+    return text or None
+
+
+def _optional_float(value: Any) -> float | None:
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int | float):
+        return float(value)
+    return None
+
+
+def _int_dict(value: Any) -> dict[str, int]:
+    if not isinstance(value, dict):
+        return {}
+    result: dict[str, int] = {}
+    for key, item in value.items():
+        if isinstance(item, bool):
+            continue
+        if isinstance(item, int | float):
+            result[str(key)] = int(item)
+    return result
+
+
+def _duration_ms(started_at: datetime, completed_at: datetime | None) -> int | None:
+    if completed_at is None:
+        return None
+    return max(0, int((completed_at - started_at).total_seconds() * 1000))
 
 
 def _utc_now() -> datetime:

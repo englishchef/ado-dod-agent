@@ -7,6 +7,8 @@ from typing import Any
 
 from backend.app.graphs.workflow import run_dod_workflow
 from backend.app.models.run_summary import DodRunSummary, RunIssue
+from backend.app.services.observability.langsmith_tracing import trace_dod_run
+from backend.app.utils.config import get_settings
 
 
 def run_dod_agent(input_data: dict[str, Any]) -> DodRunSummary:
@@ -14,6 +16,20 @@ def run_dod_agent(input_data: dict[str, Any]) -> DodRunSummary:
 
     final_state = run_dod_workflow(input_data)
     summary_payload = final_state.get("run_summary")
+    result_payload = summary_payload if isinstance(summary_payload, dict) else final_state
+    duration_ms = result_payload.get("duration_ms") if isinstance(result_payload, dict) else None
+    try:
+        trace_dod_run(
+            input_data=input_data,
+            result=result_payload if isinstance(result_payload, dict) else {},
+            timings={
+                "duration_ms": duration_ms,
+                "phase_durations_ms": final_state.get("phase_durations_ms"),
+            },
+            storage_backend=get_settings().DOD_STORAGE_BACKEND,
+        )
+    except Exception:
+        pass
     if isinstance(summary_payload, dict):
         return DodRunSummary.model_validate(summary_payload)
 

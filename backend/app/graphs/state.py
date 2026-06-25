@@ -46,6 +46,7 @@ class DodGraphState(TypedDict, total=False):
     confidence: dict[str, Any] | None
     rule_evaluation: dict[str, Any] | None
     artifact_paths: dict[str, str]
+    phase_durations_ms: dict[str, int]
     warnings: list[dict[str, Any]]
     errors: list[dict[str, Any]]
     run_summary: dict[str, Any]

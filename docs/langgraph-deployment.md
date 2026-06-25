@@ -3,6 +3,41 @@
 Phase 10A exposes the existing DoD agent as a LangGraph-native assistant without
 changing the FastAPI, CLI, orchestration, or storage behavior. Phase 10B hardens
 the shared structured run contract used by LangGraph, FastAPI, and CLI callers.
+Phase 10E prepares the same `dod` graph for containerized LangGraph-native
+enterprise deployment. Phase 10E.5 adds the org enterprise runtime config
+pattern: direct environment variables first, optional Key Vault JSON config
+second, and local `.env` behavior only for development fallback.
+
+## Confirmed Org Deployment Path
+
+DoD uses the org LangChain/LangGraph agent deployment template:
+
+```text
+/common-libs/az-langchain-agent.yml@cicd_moderndeployment
+```
+
+The template builds the image, pushes the image, and deploys or updates the
+enterprise LangGraph agent. It uses `langgraph.json` to identify graph `dod` and
+its entrypoint. A separate Container Apps deployment path is not required for
+DoD and should not be added unless a future dashboard/backend API is introduced.
+
+The deployed LangGraph health endpoint is:
+
+```text
+/ok
+```
+
+`/ok` is usually an unauthenticated platform health check. If an environment
+requires API-key authentication for health or invocation scripts, store the key
+as a separate Key Vault string secret referenced by
+`LANGGRAPH_KEY_VAULT_URL` and `LANGGRAPH_KEY_VAULT_SECRET_NAME`. Do not place
+the actual LangGraph API key inside the DoD agent runtime config JSON.
+
+Branch strategy:
+
+- `develop` deploys to `dev`.
+- `master` and `release` deploy to `stg`.
+- `prod` is a protected promotion after `stg`.
 
 ## Graph Registration
 
@@ -34,6 +69,26 @@ START -> run_dod -> END
 The `run_dod` node delegates to the existing `run_dod_agent` orchestration
 service. It does not call Azure DevOps, Azure OpenAI, Cosmos DB, or ServiceNow
 directly.
+
+Phase 10D adds optional LangSmith trace metadata through the shared
+observability helper. Trace metadata uses `graph_name=dod` and
+`assistant_name=dod`, includes the configured storage backend, and can be
+disabled without affecting DoD runs.
+
+## Required Deployment Files
+
+- `langgraph.json`
+- `pyproject.toml`
+- `backend/app/graphs/dod_deployment_graph.py`
+- `backend/app/models/dod_contracts.py`
+- `backend/app/services/orchestration/dod_run_service.py`
+- `backend/app/services/storage/*`
+- `backend/app/services/observability/*`
+- `backend/api/main.py` when FastAPI is deployed in the same image
+
+`pyproject.toml` is the authoritative dependency declaration. There is no
+runtime `requirements.txt` in this repo. The Docker image installs the package
+from `pyproject.toml` and includes `langgraph.json` in the working directory.
 
 ## Structured Input
 
@@ -109,6 +164,25 @@ dod graph compiled successfully
 The smoke test only imports and compiles the graph. It does not execute a DoD
 run and does not call Azure DevOps, Azure OpenAI, Cosmos DB, or ServiceNow.
 
+Container readiness smoke test:
+
+```powershell
+python scripts/smoke_container_readiness.py
+```
+
+Runtime config smoke test:
+
+```powershell
+python scripts/smoke_runtime_config.py --mode local
+python scripts/smoke_runtime_config.py --mode container --strict
+python scripts/smoke_enterprise_runtime_config.py
+python scripts/smoke_pipeline_config.py
+python scripts/smoke_langgraph_health.py --help
+```
+
+The runtime config smoke test validates settings only. It does not call Azure
+DevOps, Azure OpenAI, Cosmos DB, LangSmith, or ServiceNow.
+
 ## LangGraph SDK Invocation
 
 CLI helper:
@@ -121,9 +195,12 @@ python scripts/invoke_dod_langgraph.py `
   --correlation-id local-sdk-test
 ```
 
-The helper reads `DOD_LANGGRAPH_URL` and optional `LANGSMITH_API_KEY`, sends
-structured input to assistant `dod`, and prints only a safe summary: run id,
-build id, status, rule recommended status, and artifact path keys.
+The helper reads `LANGGRAPH_API_URL` or `DOD_LANGGRAPH_URL`. If configured, it
+retrieves the LangGraph API key from
+`LANGGRAPH_KEY_VAULT_URL` + `LANGGRAPH_KEY_VAULT_SECRET_NAME` using the
+centralized Azure credential factory. It sends structured input to assistant
+`dod` and prints only a safe summary: run id, build id, status, pipeline action,
+rule recommended status, and artifact path keys.
 
 ```python
 import os
@@ -178,9 +255,12 @@ LangGraph server.
 - The `dod` graph uses the storage backend selected by configuration.
 - Local JSON and Cosmos artifact storage are supported.
 - Enterprise deployment should use `DOD_STORAGE_BACKEND=cosmos`.
-- Future enterprise auth should prefer `COSMOS_AUTH_MODE=default_credential`.
+- Enterprise auth should prefer `COSMOS_AUTH_MODE=default_credential`.
+- `LANGGRAPH_ASSISTANT_ID` defaults to `dod`; platform LangGraph variables are
+  recognized but not required for graph import.
 - Local Cosmos emulator runs use `COSMOS_AUTH_MODE=emulator_key`.
 - ServiceNow writeback is out of scope for this phase.
+- Container Apps deployment is out of scope for DoD in this phase.
 - A2A, MCP, cron/listener automation, enterprise RBAC/auth middleware, and full
   deployment pipeline YAML are out of scope for this phase.
 
@@ -189,7 +269,114 @@ LangGraph server.
 - `local_json`: existing file-backed local storage under `DATA_DIR`
 - `cosmos`: Cosmos-backed artifact store
 
+Local development may use `local_json`. Container, enterprise, and
+production-like runtimes should use `DOD_STORAGE_BACKEND=cosmos`; strict runtime
+config validation fails when production-like/container mode uses `local_json`.
+
 See `docs/cosmos-artifact-store.md`.
+
+Cosmos config for deployed runtime:
+
+```text
+DOD_STORAGE_BACKEND=cosmos
+COSMOS_AUTH_MODE=default_credential
+COSMOS_ENDPOINT=https://<cosmos-account>.documents.azure.com:443/
+COSMOS_DATABASE=<database>
+COSMOS_CONTAINER=<container>
+```
+
+The same values may come from the agent Key Vault JSON secret pointed to by
+`AGENT_CONFIG_KEY_VAULT_URL` and `AGENT_CONFIG_SECRET_NAME`. Direct process env
+vars override Key Vault JSON values.
+
+Local emulator config:
+
+```text
+DOD_STORAGE_BACKEND=cosmos
+COSMOS_AUTH_MODE=emulator_key
+COSMOS_ENDPOINT=https://localhost:8081
+COSMOS_DATABASE=dod_agent_local
+COSMOS_CONTAINER=dod_runs
+COSMOS_KEY=<local-emulator-key-only>
+```
+
+## Observability
+
+LangSmith tracing is disabled by default:
+
+```text
+LANGSMITH_TRACING=false
+DOD_TRACE_MODE=summary
+LANGSMITH_PROJECT=dod-agent-local
+```
+
+When enabled, traces include small safe metadata and timing summaries. Raw Azure
+DevOps payloads, full evidence bundles, full prompts, full LLM messages,
+secrets, and full ServiceNow payload values are not traced by default. LangSmith
+package/config/connectivity failures are treated as no-op failures and must not
+fail DoD generation.
+
+See `docs/langsmith-observability.md`.
+
+## Container Build Smoke
+
+Build with the repo Dockerfile:
+
+```powershell
+docker build -f Dockerfile -t dod-agent:phase10e .
+```
+
+Run import/config checks inside the image:
+
+```powershell
+docker run --rm dod-agent:phase10e python scripts/smoke_container_readiness.py
+docker run --rm dod-agent:phase10e python scripts/smoke_runtime_config.py --mode container
+```
+
+PowerShell helper:
+
+```powershell
+.\scripts\smoke_docker_build.ps1
+```
+
+These smoke checks do not require secrets.
+
+## Troubleshooting
+
+Graph import failure:
+
+- Run `python scripts/smoke_container_readiness.py`.
+- Verify `langgraph.json` contains graph name `dod`.
+- Verify the entrypoint is
+  `backend/app/graphs/dod_deployment_graph.py:make_graph_dod`.
+
+Missing dependency:
+
+- Install from `pyproject.toml` with `python -m pip install .`.
+- Rebuild the Docker image after dependency changes.
+
+Wrong working directory:
+
+- Run smoke scripts from the repo root or container `/workspace`.
+- Verify `langgraph.json` exists in the current directory.
+
+Environment file not loaded:
+
+- LangGraph-native deployment should provide environment variables through the
+  platform secret/config system.
+- The Docker image does not copy `.env`.
+
+Cosmos config missing:
+
+- Run `python scripts/smoke_runtime_config.py --storage-backend cosmos`.
+- For `COSMOS_AUTH_MODE=emulator_key` or `key`, `COSMOS_KEY` is required.
+- For `COSMOS_AUTH_MODE=default_credential`, `COSMOS_KEY` is not required.
+
+LangSmith disabled/enabled behavior:
+
+- `LANGSMITH_TRACING=false` requires no LangSmith API key.
+- `LANGSMITH_TRACING=true` validates configuration and remains failure tolerant
+  at runtime.
 
 ## Cosmos Guidance
 

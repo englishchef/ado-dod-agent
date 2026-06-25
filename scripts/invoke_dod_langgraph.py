@@ -5,11 +5,12 @@ from __future__ import annotations
 import argparse
 import asyncio
 import os
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
 try:
+    from backend.app.core.langgraph_api_key import get_langgraph_api_key
     from backend.app.models.dod_contracts import normalize_dod_run_input
 except ModuleNotFoundError as exc:
     if exc.name != "backend":
@@ -20,6 +21,7 @@ except ModuleNotFoundError as exc:
     if str(repo_root) not in sys.path:
         sys.path.insert(0, str(repo_root))
 
+    from backend.app.core.langgraph_api_key import get_langgraph_api_key
     from backend.app.models.dod_contracts import normalize_dod_run_input
 
 ASSISTANT_NAME = "dod"
@@ -63,6 +65,7 @@ def format_safe_summary(payload: Mapping[str, Any]) -> str:
         f"- run_id: {payload.get('run_id') or 'n/a'}",
         f"- build_id: {payload.get('build_id') or 'n/a'}",
         f"- status: {payload.get('status') or 'n/a'}",
+        f"- pipeline_action: {payload.get('pipeline_action') or 'n/a'}",
         f"- rule_recommended_status: {rule_summary.get('recommended_status') or 'n/a'}",
         f"- artifact_path_keys: {', '.join(artifact_keys) if artifact_keys else 'n/a'}",
     ]
@@ -100,19 +103,20 @@ async def invoke_dod_assistant(
     return run if isinstance(run, Mapping) else {"run_id": getattr(run, "run_id", None)}
 
 
-def main() -> int:
-    args = _build_parser().parse_args()
-    url = os.environ.get("DOD_LANGGRAPH_URL")
+def main(argv: Sequence[str] | None = None) -> int:
+    args = _build_parser().parse_args(argv)
+    url = os.environ.get("LANGGRAPH_API_URL") or os.environ.get("DOD_LANGGRAPH_URL")
     if not url:
-        print("Error: DOD_LANGGRAPH_URL is required to invoke the LangGraph DoD assistant.")
+        print("Error: LANGGRAPH_API_URL or DOD_LANGGRAPH_URL is required.")
         return 2
 
     try:
         input_payload = build_structured_input(args)
+        api_key = get_langgraph_api_key(strict=False) or os.environ.get("LANGSMITH_API_KEY")
         result = asyncio.run(
             invoke_dod_assistant(
                 url=url,
-                api_key=os.environ.get("LANGSMITH_API_KEY"),
+                api_key=api_key,
                 input_payload=input_payload,
             )
         )

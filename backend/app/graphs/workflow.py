@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
+from time import perf_counter
 from typing import Any, Literal
 
 from langgraph.graph import END, START, StateGraph
@@ -22,27 +24,59 @@ from backend.app.graphs.nodes import (
     validate_outputs_node,
 )
 from backend.app.graphs.state import STATUS_FAILED, DodGraphState
+from backend.app.services.observability.langsmith_tracing import trace_event
 
 Route = Literal["failed", "continue"]
+NodeFunc = Callable[[DodGraphState], DodGraphState]
 
 
 def build_dod_workflow() -> Any:
     """Build the Phase 7B advanced-routing DoD orchestration graph."""
 
     graph = StateGraph(DodGraphState)
-    graph.add_node("validate_input", validate_input_node)
-    graph.add_node("collect_raw_metadata", collect_raw_metadata_node)
-    graph.add_node("normalize_canonical", normalize_canonical_node)
-    graph.add_node("build_evidence_buckets", build_evidence_buckets_node)
-    graph.add_node("assess_evidence_quality", assess_evidence_quality_node)
-    graph.add_node("assess_risk_tier", assess_risk_tier_node)
-    graph.add_node("select_prompt_strategy", select_prompt_strategy_node)
-    graph.add_node("generate_llm_outputs", generate_llm_outputs_node)
-    graph.add_node("validate_outputs", validate_outputs_node)
-    graph.add_node("evaluate_rules", evaluate_rules_node)
-    graph.add_node("assemble_run_result", assemble_run_result_node)
-    graph.add_node("persist_routing_decisions", persist_routing_decisions_node)
-    graph.add_node("persist_run_summary", persist_run_summary_node)
+    graph.add_node("validate_input", _timed_node("input_normalization", validate_input_node))
+    graph.add_node(
+        "collect_raw_metadata",
+        _timed_node("ado_metadata_collection", collect_raw_metadata_node),
+    )
+    graph.add_node(
+        "normalize_canonical",
+        _timed_node("canonical_normalization", normalize_canonical_node),
+    )
+    graph.add_node(
+        "build_evidence_buckets",
+        _timed_node("evidence_generation", build_evidence_buckets_node),
+    )
+    graph.add_node(
+        "assess_evidence_quality",
+        _timed_node("evidence_quality_assessment", assess_evidence_quality_node),
+    )
+    graph.add_node("assess_risk_tier", _timed_node("risk_tier_assessment", assess_risk_tier_node))
+    graph.add_node(
+        "select_prompt_strategy",
+        _timed_node("prompt_strategy_selection", select_prompt_strategy_node),
+    )
+    graph.add_node(
+        "generate_llm_outputs",
+        _timed_node("llm_bucket_generation", generate_llm_outputs_node),
+    )
+    graph.add_node(
+        "validate_outputs",
+        _timed_node("validation_repair_payload_formatting", validate_outputs_node),
+    )
+    graph.add_node("evaluate_rules", _timed_node("rule_evaluation", evaluate_rules_node))
+    graph.add_node(
+        "assemble_run_result",
+        _timed_node("final_output_serialization", assemble_run_result_node),
+    )
+    graph.add_node(
+        "persist_routing_decisions",
+        _timed_node("routing_persistence", persist_routing_decisions_node),
+    )
+    graph.add_node(
+        "persist_run_summary",
+        _timed_node("run_summary_persistence", persist_run_summary_node),
+    )
 
     graph.add_edge(START, "validate_input")
     graph.add_conditional_edges(
@@ -87,6 +121,7 @@ def run_dod_workflow(input_data: dict[str, Any]) -> dict[str, Any]:
     initial_state: DodGraphState = {
         "input": dict(input_data),
         "artifact_paths": {},
+        "phase_durations_ms": {},
         "warnings": [],
         "errors": [],
         "routing_decisions": [],
@@ -117,3 +152,30 @@ def route_after_llm(state: DodGraphState) -> Route:
 
 def _route_failed_or_continue(state: DodGraphState) -> Route:
     return "failed" if state.get("status") == STATUS_FAILED else "continue"
+
+
+def _timed_node(phase_name: str, node: NodeFunc) -> NodeFunc:
+    def run(state: DodGraphState) -> DodGraphState:
+        started = perf_counter()
+        update = node(state)
+        duration_ms = int((perf_counter() - started) * 1000)
+        phase_durations = dict(state.get("phase_durations_ms") or {})
+        phase_durations[phase_name] = duration_ms
+        merged: DodGraphState = {**update, "phase_durations_ms": phase_durations}
+        trace_event(
+            f"dod {phase_name}",
+            {
+                "run_id": update.get("run_id") or state.get("run_id"),
+                "build_id": update.get("build_id") or state.get("build_id"),
+                "organization": update.get("organization") or state.get("organization"),
+                "project": update.get("project") or state.get("project"),
+                "status": update.get("status") or state.get("status"),
+                "phase": phase_name,
+                "duration_ms": duration_ms,
+                "graph_name": "dod",
+                "assistant_name": "dod",
+            },
+        )
+        return merged
+
+    return run

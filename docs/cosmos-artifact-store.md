@@ -16,6 +16,7 @@ They may be accepted as deprecated aliases for local migration only.
 ```json
 {
   "id": "<run_id>:<artifact_type>",
+  "document_type": "artifact",
   "run_id": "<run_id>",
   "build_id": 123456,
   "artifact_type": "service_now_payload",
@@ -25,6 +26,34 @@ They may be accepted as deprecated aliases for local migration only.
   "updated_at": "..."
 }
 ```
+
+Run summary documents use the same id and partition strategy, with
+`document_type="run_summary"` and `artifact_type="run_summary"`:
+
+```json
+{
+  "id": "<run_id>:run_summary",
+  "document_type": "run_summary",
+  "run_id": "<run_id>",
+  "build_id": 123456,
+  "artifact_type": "run_summary",
+  "content": {},
+  "schema_version": "1.0",
+  "created_at": "...",
+  "updated_at": "..."
+}
+```
+
+Allowed `document_type` values:
+
+- `artifact`
+- `run_summary`
+- `run_metrics` reserved for a future dashboard phase
+
+`document_type` is present on new writes for future dashboard/query
+compatibility. Reads remain backward compatible with existing documents that do
+not yet contain the field. Phase 10D does not implement dashboard APIs,
+dashboard UI, metrics aggregation, a metrics container, or reporting views.
 
 Partition key:
 
@@ -85,7 +114,11 @@ COSMOS_DATABASE=<database>
 COSMOS_CONTAINER=<container>
 ```
 
-`COSMOS_KEY` is not required for `default_credential`.
+`COSMOS_KEY` is not required for `default_credential`. This path uses the
+central Azure credential factory. Enterprise should use
+`AZURE_CREDENTIAL_MODE=managed_identity`; set `AZURE_CLIENT_ID` only when the
+runtime identity is user-assigned. `AZURE_USER_ASSIGNED_CLIENT_ID` remains a
+backward-compatible alias, with `AZURE_CLIENT_ID` taking precedence.
 
 ## Initialize
 

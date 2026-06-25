@@ -7,6 +7,7 @@ import re
 from collections.abc import Callable
 from typing import Any, Protocol
 
+from backend.app.core.azure_credentials import get_azure_credential
 from backend.app.utils.config import Settings, get_settings
 
 COGNITIVE_SERVICES_SCOPE = "https://cognitiveservices.azure.com/.default"
@@ -81,9 +82,9 @@ class AzureFoundryChatClient:
         model_factory = self._model_factory
 
         if credential_factory is None or token_provider_factory is None:
-            from azure.identity import DefaultAzureCredential, get_bearer_token_provider
+            from azure.identity import get_bearer_token_provider
 
-            credential_factory = credential_factory or DefaultAzureCredential
+            credential_factory = credential_factory or get_azure_credential
             token_provider_factory = token_provider_factory or get_bearer_token_provider
 
         if model_factory is None:

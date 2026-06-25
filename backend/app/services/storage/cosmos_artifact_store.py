@@ -6,10 +6,14 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from backend.app.core.azure_credentials import get_azure_credential
 from backend.app.utils.config import Settings, get_settings
 
 COSMOS_PARTITION_KEY = "/run_id"
 COSMOS_SCHEMA_VERSION = "1.0"
+DOCUMENT_TYPE_ARTIFACT = "artifact"
+DOCUMENT_TYPE_RUN_SUMMARY = "run_summary"
+DOCUMENT_TYPE_RUN_METRICS = "run_metrics"
 
 
 class CosmosArtifactStore:
@@ -42,18 +46,8 @@ class CosmosArtifactStore:
     ) -> str:
         """Upsert one artifact document and return its logical reference."""
 
-        now = datetime.now(UTC).isoformat().replace("+00:00", "Z")
-        document_id = self.document_id(run_id, artifact_type)
-        document = {
-            "id": document_id,
-            "run_id": run_id,
-            "build_id": int(build_id),
-            "artifact_type": artifact_type,
-            "content": _make_json_safe(content),
-            "schema_version": COSMOS_SCHEMA_VERSION,
-            "created_at": now,
-            "updated_at": now,
-        }
+        document = self.build_document(run_id, build_id, artifact_type, content)
+        document_id = str(document["id"])
         container = self._get_container(create=False)
         try:
             existing = container.read_item(item=document_id, partition_key=run_id)
@@ -63,6 +57,28 @@ class CosmosArtifactStore:
             pass
         container.upsert_item(document)
         return _cosmos_uri(self.settings, run_id, artifact_type)
+
+    def build_document(
+        self,
+        run_id: str,
+        build_id: int,
+        artifact_type: str,
+        content: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Build the stable Cosmos artifact document shape."""
+
+        now = datetime.now(UTC).isoformat().replace("+00:00", "Z")
+        return {
+            "id": self.document_id(run_id, artifact_type),
+            "document_type": _document_type_for_artifact(artifact_type),
+            "run_id": run_id,
+            "build_id": int(build_id),
+            "artifact_type": artifact_type,
+            "content": _make_json_safe(content),
+            "schema_version": COSMOS_SCHEMA_VERSION,
+            "created_at": now,
+            "updated_at": now,
+        }
 
     def load_artifact(self, run_id: str, artifact_type: str) -> dict[str, Any]:
         """Load one artifact by run id and artifact type."""
@@ -307,7 +323,7 @@ def _required_cosmos_config(settings: Settings) -> tuple[str, Any, str, str]:
         return endpoint, key, database_name, container_name
 
     try:
-        from azure.identity import DefaultAzureCredential
+        credential = get_azure_credential()
     except ModuleNotFoundError as exc:
         if exc.name != "azure":
             raise
@@ -315,7 +331,7 @@ def _required_cosmos_config(settings: Settings) -> tuple[str, Any, str, str]:
             "azure-identity is not installed. Install project dependencies before using "
             "COSMOS_AUTH_MODE=default_credential."
         ) from exc
-    return endpoint, DefaultAzureCredential(), database_name, container_name
+    return endpoint, credential, database_name, container_name
 
 
 def _artifact_from_relative_path(relative_path: str) -> tuple[int, str]:
@@ -350,6 +366,14 @@ def _content_from_document(document: Any) -> dict[str, Any]:
         return {}
     content = document.get("content")
     return content if isinstance(content, dict) else {}
+
+
+def _document_type_for_artifact(artifact_type: str) -> str:
+    if artifact_type == DOCUMENT_TYPE_RUN_SUMMARY:
+        return DOCUMENT_TYPE_RUN_SUMMARY
+    if artifact_type == DOCUMENT_TYPE_RUN_METRICS:
+        return DOCUMENT_TYPE_RUN_METRICS
+    return DOCUMENT_TYPE_ARTIFACT
 
 
 def _cosmos_uri(settings: Settings, run_id: str, artifact_type: str) -> str:

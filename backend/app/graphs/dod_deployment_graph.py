@@ -11,6 +11,7 @@ from backend.app.models.dod_contracts import (
     normalize_dod_run_input,
     serialize_dod_run_output,
 )
+from backend.app.services.observability.langsmith_tracing import safe_trace_context, trace_event
 from backend.app.services.orchestration.dod_run_service import run_dod_agent
 
 
@@ -29,6 +30,14 @@ def _run_dod_node(state: DoDGraphState) -> DoDGraphState:
     contract_input = normalize_dod_run_input(normalized)
     request = contract_input.model_dump(mode="json")
     output = serialize_dod_run_output(run_dod_agent(request), fallback_input=contract_input)
+    trace_event(
+        "dod graph output serialization",
+        safe_trace_context(
+            input_data=request,
+            result=output.model_dump(mode="json"),
+            storage_backend=None,
+        ),
+    )
 
     return cast(DoDGraphState, {
         **normalized,

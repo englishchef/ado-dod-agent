@@ -90,6 +90,7 @@ def test_save_load_and_list_with_mocked_container() -> None:
     assert reference == "cosmos://dod_runs/run-1/run_summary"
     assert container.upserted is not None
     assert container.upserted["id"] == "run-1:run_summary"
+    assert container.upserted["document_type"] == "run_summary"
     assert container.upserted["schema_version"] == "1.0"
     assert store.load_artifact("run-1", "run_summary") == {"status": "completed"}
     assert store.load_artifact_by_build_id(123, "run_summary") == {"status": "completed"}

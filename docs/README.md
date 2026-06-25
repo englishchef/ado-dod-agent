@@ -16,6 +16,7 @@ Python backend for collecting Azure DevOps build metadata and preparing Definiti
 - Phase 8: FastAPI pipeline-facing generation endpoint and read-only artifact retrieval
 - Phase 9: deterministic post-generation rule evaluation and test-evidence quality scoring
 - Phase 10C: official artifact storage abstraction with local JSON and Cosmos DB backends
+- Phase 10E.5: enterprise runtime config resolution with optional Key Vault JSON config
 
 Out of scope:
 - ServiceNow writeback
@@ -23,6 +24,10 @@ Out of scope:
 - model fallback
 - historical knowledge fallback
 - parallel generation
+
+Enterprise runtime config docs:
+- `docs/enterprise-runtime-config.md`
+- `docs/key-vault-config-contract.md`
 
 ## Backend Layout
 ```text

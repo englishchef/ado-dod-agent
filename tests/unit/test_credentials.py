@@ -10,23 +10,27 @@ from pytest import MonkeyPatch
 def test_get_azure_credential_initializes_default_credential(
     monkeypatch: MonkeyPatch,
 ) -> None:
-    """Credential factory should initialize DefaultAzureCredential without live calls."""
-
-    captured_kwargs: dict[str, object] = {}
+    """Legacy auth helper should delegate to the centralized credential factory."""
 
     class DummyCredential:
         pass
 
-    def fake_default_credential(**kwargs: object) -> DummyCredential:
-        captured_kwargs.update(kwargs)
+    captured_environ: dict[str, str] = {}
+
+    def fake_core_credential(environ: dict[str, str]) -> DummyCredential:
+        captured_environ.update(environ)
         return DummyCredential()
 
-    monkeypatch.setattr(credentials_module, "DefaultAzureCredential", fake_default_credential)
+    monkeypatch.setattr(credentials_module, "_get_azure_credential", fake_core_credential)
 
-    settings = Settings(APP_ENV="local", AZURE_CLIENT_ID="managed-identity-client-id")
+    settings = Settings(
+        APP_ENV="local",
+        AZURE_CREDENTIAL_MODE="managed_identity",
+        AZURE_CLIENT_ID="managed-identity-client-id",
+    )
     credential = credentials_module.get_azure_credential(settings)
 
     assert isinstance(credential, DummyCredential)
-    assert captured_kwargs["managed_identity_client_id"] == "managed-identity-client-id"
-    assert captured_kwargs["exclude_interactive_browser_credential"] is False
+    assert captured_environ["AZURE_CREDENTIAL_MODE"] == "managed_identity"
+    assert captured_environ["AZURE_CLIENT_ID"] == "managed-identity-client-id"
 

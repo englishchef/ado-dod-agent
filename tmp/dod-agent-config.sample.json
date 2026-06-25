@@ -1,0 +1,12 @@
+{
+  "DOD_STORAGE_BACKEND": "cosmos",
+  "AZURE_CREDENTIAL_MODE": "managed_identity",
+  "COSMOS_AUTH_MODE": "default_credential",
+  "COSMOS_ENDPOINT": "https://example-cosmos.documents.azure.com:443/",
+  "COSMOS_DATABASE": "dod-agent-dev",
+  "COSMOS_CONTAINER": "dod-runs",
+  "ADO_ORGANIZATION": "example-org",
+  "AZURE_OPENAI_ENDPOINT": "https://example-openai.openai.azure.com/",
+  "AZURE_OPENAI_DEPLOYMENT": "example-deployment",
+  "LANGSMITH_PROJECT": "dod-agent-dev"
+}

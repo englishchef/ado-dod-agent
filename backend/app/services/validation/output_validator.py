@@ -14,6 +14,12 @@ from backend.app.models.validated_outputs import (
     ServiceNowPayload,
     ValidationIssue,
 )
+from backend.app.services.validation.output_repair import (
+    detect_delivery_detail_leakage,
+    longest_contiguous_word_overlap,
+    normalized_words,
+    sequence_similarity,
+)
 
 Severity = Literal["info", "warning", "error"]
 
@@ -27,6 +33,18 @@ _RAW_REFERENCE_LEAKAGE_RE = re.compile(
     r"(\[(?:raw|canonical|evidence)\.[^\]]+\]|"
     r"\b(?:raw|canonical|evidence)\.[A-Za-z0-9_.-]+(?:\[[0-9]+\])*|"
     r"\bsource_ref(?:_map)?\b)",
+    re.IGNORECASE,
+)
+_CHANGE_ENUMERATION_RE = re.compile(
+    r"\b(?:add|adds|change|changes|correct|corrects|enhance|enhances|fix|fixes|"
+    r"implement|implements|introduce|introduces|modify|modifies|resolve|resolves|"
+    r"support|supports|update|updates)\b",
+    re.IGNORECASE,
+)
+_RATIONALE_RE = re.compile(
+    r"\b(?:because|benefit|compliance|correctness|efficiency|ensure|necessary|prevent|"
+    r"reduce|reliability|required|risk|supportability)\b|user experience|"
+    r"operational consistency",
     re.IGNORECASE,
 )
 
@@ -74,6 +92,8 @@ def validate_llm_outputs(
             )
 
         issues.extend(_unsupported_claim_issues(bucket_name, bucket_payload, evidence))
+        if bucket_name == "bucket_1":
+            issues.extend(validate_change_intent_field_separation(bucket_payload, bucket_name))
         issues.extend(_missing_context_issues(bucket_name, evidence))
         results.append(
             BucketValidationResult(
@@ -112,6 +132,84 @@ def validate_no_raw_reference_leakage(
     return issues
 
 
+def validate_change_intent_field_separation(
+    payload: ServiceNowPayload | dict[str, Any],
+    bucket: str | None = None,
+) -> list[ValidationIssue]:
+    """Validate that description and justification serve distinct field purposes."""
+
+    payload_dict = payload.model_dump() if isinstance(payload, ServiceNowPayload) else payload
+    change_description = payload_dict.get("change_description")
+    justification = payload_dict.get("justification")
+    issues: list[ValidationIssue] = []
+
+    if isinstance(change_description, str) and detect_delivery_detail_leakage(
+        change_description
+    ):
+        issues.append(
+            _issue(
+                "warning",
+                "CHANGE_DESCRIPTION_DELIVERY_DETAIL_LEAKAGE",
+                "Change description contains build, source-control, or delivery metadata.",
+                "change_description",
+                bucket,
+            )
+        )
+    if isinstance(justification, str) and detect_delivery_detail_leakage(justification):
+        issues.append(
+            _issue(
+                "warning",
+                "JUSTIFICATION_DELIVERY_DETAIL_LEAKAGE",
+                "Justification contains build, source-control, or delivery metadata.",
+                "justification",
+                bucket,
+            )
+        )
+    if not isinstance(change_description, str) or not isinstance(justification, str):
+        return issues
+
+    description_words = normalized_words(change_description)
+    justification_words = normalized_words(justification)
+    shorter_word_count = min(len(description_words), len(justification_words))
+    similarity = sequence_similarity(change_description, justification)
+    longest_overlap = longest_contiguous_word_overlap(change_description, justification)
+    if shorter_word_count >= 18 and similarity >= 0.88:
+        issues.append(
+            _issue(
+                "warning",
+                "JUSTIFICATION_REPETITIVE",
+                "Justification is nearly identical to change description.",
+                "justification",
+                bucket,
+            )
+        )
+
+    overlap_reasons: list[str] = []
+    if longest_overlap >= 15:
+        overlap_reasons.append("copies a long contiguous phrase from change description")
+    if (
+        len(description_words) >= 50
+        and len(justification_words) >= 90
+        and len(justification_words) > len(description_words) * 1.25
+    ):
+        overlap_reasons.append("is substantially longer than change description")
+    change_terms = len(_CHANGE_ENUMERATION_RE.findall(justification))
+    rationale_terms = len(_RATIONALE_RE.findall(justification))
+    if change_terms >= 4 and rationale_terms <= 1:
+        overlap_reasons.append("primarily enumerates changes instead of explaining rationale")
+    if overlap_reasons:
+        issues.append(
+            _issue(
+                "warning",
+                "FIELD_PURPOSE_OVERLAP",
+                "Justification " + "; ".join(overlap_reasons) + ".",
+                "justification",
+                bucket,
+            )
+        )
+    return issues
+
+
 def validate_service_now_payload(
     payload: ServiceNowPayload | dict[str, Any],
     evidence_bundle: dict[str, Any] | None = None,
@@ -140,6 +238,7 @@ def validate_service_now_payload(
         else payload
     )
     issues.extend(validate_no_raw_reference_leakage(payload_dict))
+    issues.extend(validate_change_intent_field_separation(payload_dict))
     joined_payload = " ".join(str(value) for value in payload_dict.values())
     issues.extend(_risk_claim_issues(joined_payload, None, "risk_impact_analysis"))
     if _tests_missing(evidence):

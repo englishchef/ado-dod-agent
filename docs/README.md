@@ -259,6 +259,22 @@ Generated target fields:
 - `backout_plan`
 - `risk_impact_analysis`
 
+Field-purpose separation:
+
+| Field | Purpose |
+| --- | --- |
+| `change_description` | What production application or service functionality is changing. |
+| `justification` | Why the change is necessary and what supported business or technical value it provides. |
+| `testing_performed` | How the change was tested, based on available test evidence. |
+| `implementation_plan` | How the change will be deployed. |
+| `backout_plan` | How the change will be reversed if needed. |
+
+`change_description` and `justification` must translate source evidence into business-readable
+production-change language. Build numbers, branch and pipeline names, artifacts, commit details,
+CI/CD mechanics, deployment steps, raw evidence references, and internal evidence keys do not
+belong in either field. Delivery evidence remains available for grounding and traceability without
+being exposed in these ServiceNow values.
+
 CLI:
 ```powershell
 python scripts/generate_service_now_fields.py --build-id <BUILD_ID>
@@ -277,7 +293,10 @@ python scripts/generate_service_now_fields.py --build-id <BUILD_ID> --bucket-1 d
 
 Phase 5B reminders:
 - No ServiceNow update/writeback occurs.
-- No repair retry logic is implemented yet.
+- Bucket generation retries only malformed or failed model output; it does not call external
+  services beyond the configured model invocation.
+- Phase 6 applies conservative deterministic field-purpose repair for delivery-only metadata and
+  repeated description sentences when supported rationale remains.
 - No deterministic confidence scoring is implemented yet.
 - Generated output is draft text and should be reviewed.
 - Missing PR, test, rollback, or other evidence should be reflected honestly in `missing_information` and conservative field language.

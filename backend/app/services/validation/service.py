@@ -9,6 +9,7 @@ from pydantic import ValidationError
 
 from backend.app.models.llm_outputs import CombinedLlmOutputs
 from backend.app.models.validated_outputs import (
+    BucketValidationResult,
     ServiceNowPayload,
     ValidatedDodOutput,
     ValidationIssue,
@@ -20,7 +21,10 @@ from backend.app.services.formatting.servicenow_formatter import (
     format_service_now_payload,
 )
 from backend.app.services.scoring.confidence import score_confidence
-from backend.app.services.validation.output_repair import repair_llm_output_shape
+from backend.app.services.validation.output_repair import (
+    repair_change_intent_fields,
+    repair_llm_output_shape,
+)
 from backend.app.services.validation.output_validator import (
     validate_llm_outputs,
     validate_service_now_payload,
@@ -38,7 +42,7 @@ def validate_and_assemble_outputs(
 ) -> ValidatedDodOutput:
     """Validate Phase 5B outputs and assemble final ServiceNow-ready payload."""
 
-    _ = allow_llm_repair
+    _ = allow_llm_repair  # Reserved for optional model repair; deterministic repair is always safe.
     repaired_payload = _repair_combined_payload(llm_outputs)
     parsed_outputs = CombinedLlmOutputs.model_validate(repaired_payload)
     bucket_results = validate_llm_outputs(parsed_outputs, evidence_bundle)
@@ -48,6 +52,10 @@ def validate_and_assemble_outputs(
     except ValidationError as exc:
         assembled_payload = _construct_unchecked_payload(parsed_outputs)
         validation_issues.extend(_issues_from_payload_validation_error(exc))
+    repaired_fields, repair_notes = repair_change_intent_fields(assembled_payload.model_dump())
+    if repair_notes:
+        assembled_payload = ServiceNowPayload.model_construct(**repaired_fields)
+        _mark_bucket_1_repaired(bucket_results, repair_notes)
     try:
         service_now_payload = format_service_now_payload(assembled_payload)
     except ValidationError as exc:
@@ -88,6 +96,20 @@ def _repair_combined_payload(payload: dict[str, Any]) -> dict[str, Any]:
     except ValidationError:
         raise
     return repaired
+
+
+def _mark_bucket_1_repaired(
+    bucket_results: list[BucketValidationResult],
+    repair_notes: list[str],
+) -> None:
+    for result in bucket_results:
+        if result.bucket_name != "bucket_1":
+            continue
+        result.repaired = True
+        result.repair_notes.extend(
+            note for note in repair_notes if note not in result.repair_notes
+        )
+        return
 
 
 def _construct_unchecked_payload(llm_outputs: CombinedLlmOutputs) -> ServiceNowPayload:

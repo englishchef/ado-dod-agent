@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from backend.app.models.canonical import (
@@ -224,6 +224,38 @@ def _partial_canonical() -> CanonicalDodDocument:
     )
 
 
+def _deployment_stage(
+    stage_id: str,
+    name: str,
+    start_minute: int,
+    duration_seconds: int,
+    *,
+    result: str = "succeeded",
+    state: str = "completed",
+) -> CanonicalStage:
+    start = datetime(2026, 7, 10, 14, 0, tzinfo=UTC) + timedelta(minutes=start_minute)
+    return CanonicalStage(
+        id=stage_id,
+        name=name,
+        result=result,
+        state=state,
+        start_time=start,
+        finish_time=start + timedelta(seconds=duration_seconds),
+        duration_seconds=duration_seconds,
+    )
+
+
+def _deployment_task(task_id: str, parent_id: str, name: str) -> CanonicalTask:
+    return CanonicalTask(
+        id=task_id,
+        parent_id=parent_id,
+        name=name,
+        result="succeeded",
+        state="completed",
+        duration_seconds=1,
+    )
+
+
 def test_evidence_bundle_builds_from_complete_canonical() -> None:
     bundle = build_evidence_bundle(
         _complete_canonical(),
@@ -297,6 +329,8 @@ def test_bucket_3_normalizes_uat_deployment_timing_and_resiliency_evidence() -> 
             id="uat-stage",
             name="UAT Deployment",
             result="succeeded",
+            start_time=datetime(2026, 5, 2, 10, 0, tzinfo=UTC),
+            finish_time=datetime(2026, 5, 2, 10, 15, tzinfo=UTC),
             duration_seconds=900,
         )
     ]
@@ -336,9 +370,12 @@ def test_bucket_3_normalizes_uat_deployment_timing_and_resiliency_evidence() -> 
     assert [activity.name for activity in bucket.uat_deployment.activities] == [
         "Deploy solution package",
         "Update environment configuration",
-        "Validate application health",
     ]
     assert bucket.uat_deployment.total_deployment_duration_seconds == 900
+    assert bucket.backout_time_derivation.calculation_method == (
+        "lower_environment_stage_duration"
+    )
+    assert bucket.backout_time_derivation.final_estimate_minutes == 15
     assert bucket.resiliency_evidence.rolling_deployment is True
     assert bucket.resiliency_evidence.alternate_region is not None
     assert bucket.resiliency_evidence.traffic_shift is True
@@ -355,6 +392,213 @@ def test_bucket_3_captures_explicit_planned_outage_and_high_risk_evidence() -> N
 
     assert bucket.planned_impact_evidence
     assert bucket.high_risk_evidence
+
+
+def test_bucket_3_prefers_uat_and_uses_full_stage_duration_not_task_durations() -> None:
+    canonical = _complete_canonical()
+    canonical.execution_context.stages = [
+        _deployment_stage("dev", "Deploy to DEV", 0, 1800),
+        _deployment_stage("uat", "Deploy to UAT", 40, 558),
+    ]
+    canonical.execution_context.jobs = [
+        CanonicalJob(id="dev-job", parent_id="dev", name="Deploy Application to DEV"),
+        CanonicalJob(id="uat-job", parent_id="uat", name="Deploy Solution to UAT"),
+    ]
+    canonical.execution_context.tasks = [
+        _deployment_task("dev-deploy", "dev-job", "Deploy Application ContactCenterASAC"),
+        CanonicalTask(
+            id="metadata",
+            parent_id="uat-job",
+            name="Get Base Solution Versions",
+            result="succeeded",
+            state="completed",
+            duration_seconds=540,
+        ),
+        _deployment_task(
+            "upgrade",
+            "uat-job",
+            "Upgrade Solution AcctShutdownAcctCompromiseASAC",
+        ),
+        _deployment_task(
+            "apply",
+            "uat-job",
+            "Apply Solution Upgrade AcctShutdownAcctCompromiseASAC",
+        ),
+    ]
+
+    bucket = build_evidence_bundle(canonical).bucket_3
+
+    assert bucket.backout_time_derivation.selected_environment == "UAT"
+    assert bucket.backout_time_derivation.source_duration_seconds == 558
+    assert bucket.backout_time_derivation.final_estimate_minutes == 10
+    assert [item.name for item in bucket.uat_deployment.activities] == [
+        "Upgrade Solution AcctShutdownAcctCompromiseASAC",
+        "Apply Solution Upgrade AcctShutdownAcctCompromiseASAC",
+    ]
+    assert any(item.stage_name == "Deploy to DEV" for item in bucket.rejected_stages)
+
+
+def test_bucket_3_uses_qa_when_uat_is_absent() -> None:
+    canonical = _complete_canonical()
+    canonical.execution_context.stages = [_deployment_stage("qa", "QA Deployment", 0, 601)]
+    canonical.execution_context.jobs = []
+    canonical.execution_context.tasks = [
+        _deployment_task("qa-deploy", "qa", "Deploy Application ContactCenterASAC")
+    ]
+
+    bucket = build_evidence_bundle(canonical).bucket_3
+
+    assert bucket.backout_time_derivation.selected_environment == "QA"
+    assert bucket.backout_time_derivation.final_estimate_minutes == 15
+
+
+def test_bucket_3_skips_canceled_uat_and_selects_successful_qa() -> None:
+    canonical = _complete_canonical()
+    canonical.execution_context.stages = [
+        _deployment_stage("uat", "UAT Deployment", 0, 600, result="skipped"),
+        _deployment_stage("qa", "Release to QA", 20, 420),
+    ]
+    canonical.execution_context.jobs = []
+    canonical.execution_context.tasks = [
+        _deployment_task("uat-deploy", "uat", "Deploy Application ContactCenterASAC"),
+        _deployment_task("qa-deploy", "qa", "Deploy Application ContactCenterASAC"),
+    ]
+
+    bucket = build_evidence_bundle(canonical).bucket_3
+
+    assert bucket.backout_time_derivation.selected_environment == "QA"
+    assert any(
+        item.stage_name == "UAT Deployment" and "skipped" in item.reason.lower()
+        for item in bucket.rejected_stages
+    )
+
+
+def test_bucket_3_never_uses_production_for_backout_duration() -> None:
+    canonical = _complete_canonical()
+    canonical.execution_context.stages = [
+        _deployment_stage("prod", "Production Deployment", 0, 900)
+    ]
+    canonical.execution_context.jobs = []
+    canonical.execution_context.tasks = [
+        _deployment_task("prod-deploy", "prod", "Deploy Application ContactCenterASAC")
+    ]
+
+    bucket = build_evidence_bundle(canonical).bucket_3
+
+    assert bucket.backout_time_derivation.selected_environment is None
+    assert bucket.backout_time_derivation.final_estimate_minutes is None
+    assert "BACKOUT_DURATION_LOWER_ENVIRONMENT_NOT_FOUND" in bucket.warnings
+    assert "Production stages cannot be used" in bucket.rejected_stages[0].reason
+
+
+def test_bucket_3_normalizes_user_acceptance_testing_to_uat() -> None:
+    canonical = _complete_canonical()
+    canonical.execution_context.stages = [
+        _deployment_stage("uat", "User Acceptance Testing", 0, 300)
+    ]
+    canonical.execution_context.jobs = []
+    canonical.execution_context.tasks = [
+        _deployment_task("uat-deploy", "uat", "Deploy Solution ContactCenterASAC")
+    ]
+
+    bucket = build_evidence_bundle(canonical).bucket_3
+
+    assert bucket.backout_time_derivation.selected_environment == "UAT"
+
+
+def test_bucket_3_stage_duration_includes_wait_time_by_business_rule() -> None:
+    canonical = _complete_canonical()
+    canonical.execution_context.stages = [
+        _deployment_stage("uat", "UAT Deployment", 0, 720)
+    ]
+    canonical.execution_context.jobs = []
+    canonical.execution_context.tasks = [
+        _deployment_task("uat-deploy", "uat", "Deploy Solution ContactCenterASAC"),
+        CanonicalTask(
+            id="wait",
+            parent_id="uat",
+            name="Wait for approval",
+            result="succeeded",
+            state="completed",
+            duration_seconds=300,
+        ),
+    ]
+
+    bucket = build_evidence_bundle(canonical).bucket_3
+
+    assert bucket.backout_time_derivation.source_duration_seconds == 720
+    assert bucket.backout_time_derivation.final_estimate_minutes == 15
+    assert [item.name for item in bucket.uat_deployment.activities] == [
+        "Deploy Solution ContactCenterASAC"
+    ]
+
+
+def test_bucket_3_application_resolution_prefers_repository_over_weak_work_item_names() -> None:
+    canonical = _complete_canonical()
+    canonical.run_context.repository_name = "contact-center-asac"
+    canonical.run_context.pipeline_name = "contact-center-asac-deploy"
+    canonical.change_context.work_items[0].title = "Enable service for Bill Pay Service"
+    canonical.change_context.work_items[0].description = (
+        "The Enable service wording is unrelated to the deployed application."
+    )
+    canonical.execution_context.stages = [
+        _deployment_stage("uat", "UAT Deployment", 0, 558)
+    ]
+    canonical.execution_context.jobs = []
+    canonical.execution_context.tasks = [
+        _deployment_task(
+            "upgrade",
+            "uat",
+            "Upgrade Solution AcctShutdownAcctCompromiseASAC",
+        ),
+        _deployment_task(
+            "apply",
+            "uat",
+            "Apply Solution Upgrade AcctShutdownAcctCompromiseASAC",
+        ),
+    ]
+
+    resolution = build_evidence_bundle(canonical).bucket_3.application_resolution
+
+    assert resolution is not None
+    assert resolution.selected_application == "contact-center-asac"
+    assert resolution.display_name == "Contact Center ASAC application"
+    assert resolution.candidate_scores[0].sources == [
+        "repository",
+        "pipeline",
+        "uat_deployment",
+    ]
+
+
+def test_bucket_3_maps_production_solution_identifier_to_parent_application() -> None:
+    canonical = _complete_canonical()
+    canonical.run_context.repository_name = "contact-center-asac"
+    canonical.run_context.pipeline_name = "contact-center-asac-deploy"
+    canonical.execution_context.stages = [
+        _deployment_stage("uat", "UAT Deployment", 0, 558),
+        _deployment_stage("prod", "Production Deployment", 20, 600),
+    ]
+    canonical.execution_context.jobs = []
+    canonical.execution_context.tasks = [
+        _deployment_task(
+            "uat-upgrade",
+            "uat",
+            "Upgrade Solution AcctShutdownAcctCompromiseASAC",
+        ),
+        _deployment_task(
+            "prod-upgrade",
+            "prod",
+            "Upgrade Solution AcctShutdownAcctCompromiseASAC",
+        ),
+    ]
+
+    resolution = build_evidence_bundle(canonical).bucket_3.application_resolution
+
+    assert resolution is not None
+    assert resolution.selected_application == "contact-center-asac"
+    assert resolution.display_name == "Contact Center ASAC application"
+    assert "production_deployment" in resolution.candidate_scores[0].sources
+    assert "Mapped production solution evidence" in resolution.selection_reason
 
 
 def test_failed_timeline_and_test_evidence_appear_in_bucket_3() -> None:

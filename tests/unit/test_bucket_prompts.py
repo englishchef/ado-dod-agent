@@ -155,7 +155,7 @@ def test_bucket_3_prompt_avoids_absolute_no_risk_language() -> None:
     assert "not that the risk is impossible" in prompt
 
 
-def test_bucket_3_prompt_enforces_uat_first_backout_and_evidence_likelihood() -> None:
+def test_bucket_3_prompt_enforces_lower_environment_backout_and_evidence_likelihood() -> None:
     prompt = bucket_3_rollback_risk.build_prompt(
         {
             "uat_deployment": {"activities": []},
@@ -163,7 +163,13 @@ def test_bucket_3_prompt_enforces_uat_first_backout_and_evidence_likelihood() ->
         }
     )
 
-    assert "Derive reverse steps primarily from uat_deployment.activities" in prompt
+    assert "Derive reverse steps only from the valid deployment actions" in prompt
+    assert "UAT, QA, Test, INTG, SIT, DEV" in prompt
+    assert "Get Base Solution Versions" in prompt
+    assert "full selected" in prompt
+    assert "Never sum or select individual task durations" in prompt
+    assert "Not available from the pipeline evidence" in prompt
+    assert "application_resolution.display_name" in prompt
     assert "Estimated backout time:" in prompt
     assert "Do not invent an estimated duration" in prompt
     assert "No planned outage or degradation should be" in prompt

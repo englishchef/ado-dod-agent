@@ -19,7 +19,10 @@ from backend.app.models.canonical import (
     CanonicalWorkItem,
 )
 from backend.app.models.evidence import (
+    ApplicationCandidateScoreEvidence,
+    ApplicationResolutionEvidence,
     ArtifactEvidence,
+    BackoutTimeDerivationEvidence,
     ChangeIntentEvidence,
     CommitEvidence,
     EvidenceBundle,
@@ -29,7 +32,9 @@ from backend.app.models.evidence import (
     ExecutionValidationEvidence,
     FailureWarningEvidence,
     JobEvidence,
+    LowerEnvironmentStageCandidateEvidence,
     PullRequestEvidence,
+    RejectedStageEvidence,
     ResiliencyEvidence,
     RiskFlagsEvidence,
     RollbackRiskEvidence,
@@ -39,6 +44,16 @@ from backend.app.models.evidence import (
     UatDeploymentActivityEvidence,
     UatDeploymentEvidence,
     WorkItemEvidence,
+)
+from backend.app.services.evidence.bucket_3_selection import (
+    ENVIRONMENT_PRIORITY,
+    deployment_action_kind,
+    display_application_name,
+    environment_priority,
+    is_deployment_activity_name,
+    normalize_application_candidate,
+    normalize_environment_name,
+    round_up_backout_minutes,
 )
 from backend.app.services.evidence.reference_normalizer import normalize_source_ref
 
@@ -63,26 +78,6 @@ _IMPLEMENTATION_HINTS = (
     "environment",
 )
 _DEPLOYMENT_HINTS = ("deploy", "release", "environment", "prod", "stage", "lower")
-_UAT_NAME_RE = re.compile(r"\b(?:uat|user acceptance(?: testing)?)\b", re.IGNORECASE)
-_UAT_ACTIVITY_TERMS = (
-    "deploy",
-    "import",
-    "solution",
-    "package",
-    "configuration",
-    "config",
-    "environment variable",
-    "dependency",
-    "restart",
-    "smoke",
-    "health check",
-    "validate",
-    "validation",
-    "solution checker",
-    "database",
-    "schema",
-    "infrastructure",
-)
 _PLANNED_IMPACT_PATTERNS = (
     re.compile(
         r"\b(?:planned|expected)\s+(?:service\s+)?(?:outage|downtime|impact|degradation|"
@@ -652,14 +647,18 @@ def _bucket_3_text_sources(
     source_ref_map: dict[str, EvidenceSourceRef] | None,
 ) -> list[tuple[str, str | None]]:
     sources: list[tuple[str, str | None]] = []
-    for item in canonical.change_context.work_items:
-        source_ref = _friendly_source_ref("work_item", item, source_ref_map)
-        for value in (item.title, item.description, item.acceptance_criteria):
+    for work_item in canonical.change_context.work_items:
+        source_ref = _friendly_source_ref("work_item", work_item, source_ref_map)
+        for value in (
+            work_item.title,
+            work_item.description,
+            work_item.acceptance_criteria,
+        ):
             if is_meaningful_text(clean_text(value)):
                 sources.append((clean_text(value) or "", source_ref))
-    for item in canonical.change_context.pull_requests:
-        source_ref = _friendly_source_ref("pull_request", item, source_ref_map)
-        for value in (item.title, item.description):
+    for pull_request in canonical.change_context.pull_requests:
+        source_ref = _friendly_source_ref("pull_request", pull_request, source_ref_map)
+        for value in (pull_request.title, pull_request.description):
             if is_meaningful_text(clean_text(value)):
                 sources.append((clean_text(value) or "", source_ref))
     for source_type, items in (
@@ -667,12 +666,12 @@ def _bucket_3_text_sources(
         ("job", canonical.execution_context.jobs),
         ("task", canonical.execution_context.tasks),
     ):
-        for item in items:
-            if is_meaningful_text(clean_text(item.name)):
+        for timeline_item in items:
+            if is_meaningful_text(clean_text(timeline_item.name)):
                 sources.append(
                     (
-                        clean_text(item.name) or "",
-                        _friendly_source_ref(source_type, item, source_ref_map),
+                        clean_text(timeline_item.name) or "",
+                        _friendly_source_ref(source_type, timeline_item, source_ref_map),
                     )
                 )
     sources.extend(
@@ -687,65 +686,224 @@ def _bucket_3_text_sources(
     return sources
 
 
-def _build_uat_deployment_evidence(
+def _normalized_status(value: str | None) -> str:
+    return re.sub(r"[^a-z]", "", (value or "").lower())
+
+
+def _is_completed_deployment_record(item: CanonicalStage | CanonicalJob | CanonicalTask) -> bool:
+    result = _normalized_status(item.result)
+    state = _normalized_status(item.state)
+    if result in {"failed", "canceled", "cancelled", "skipped", "abandoned"}:
+        return False
+    if state in {"canceled", "cancelled", "skipped", "notstarted", "pending"}:
+        return False
+    return result in {
+        "succeeded",
+        "succeededwithissues",
+        "partiallysucceeded",
+    } or state in {"completed", "inprogress"} or item.finish_time is not None
+
+
+def _container_activity_items(
+    canonical: CanonicalDodDocument,
+    container: CanonicalStage | CanonicalJob,
+    source_type: str,
+) -> list[tuple[str, CanonicalStage | CanonicalJob | CanonicalTask]]:
+    if source_type == "stage":
+        jobs = [
+            job
+            for job in canonical.execution_context.jobs
+            if container.id and job.parent_id == container.id
+        ]
+        parent_ids = {container.id, *(job.id for job in jobs)} - {None}
+        tasks = [
+            task
+            for task in canonical.execution_context.tasks
+            if task.parent_id and task.parent_id in parent_ids
+        ]
+    else:
+        jobs = []
+        tasks = [
+            task
+            for task in canonical.execution_context.tasks
+            if container.id and task.parent_id == container.id
+        ]
+
+    activities: list[tuple[str, CanonicalStage | CanonicalJob | CanonicalTask]] = [
+        ("task", task)
+        for task in tasks
+        if is_deployment_activity_name(task.name) and _is_completed_deployment_record(task)
+    ]
+    if activities:
+        return activities
+    activities.extend(
+        ("job", job)
+        for job in jobs
+        if is_deployment_activity_name(job.name) and _is_completed_deployment_record(job)
+    )
+    if activities:
+        return activities
+    if is_deployment_activity_name(container.name):
+        return [(source_type, container)]
+    return []
+
+
+def _stage_rejection_reason(
+    container: CanonicalStage | CanonicalJob,
+    environment: str | None,
+    activities: list[tuple[str, CanonicalStage | CanonicalJob | CanonicalTask]],
+) -> str | None:
+    if environment == "PRODUCTION":
+        return "Production stages cannot be used for backout-duration estimation."
+    if environment is None:
+        return "Not a lower-environment deployment stage."
+    if not _is_completed_deployment_record(container):
+        return "Stage was skipped, canceled, failed, or did not substantially complete."
+    if not activities:
+        return "Stage does not contain a valid application or solution deployment activity."
+    if container.start_time is None or container.finish_time is None:
+        return "Deployment-stage start or finish timing is missing."
+    duration = (container.finish_time - container.start_time).total_seconds()
+    if duration <= 0:
+        return "Deployment-stage timing is not a positive duration."
+    return None
+
+
+def _lower_environment_deployment_evidence(
     canonical: CanonicalDodDocument,
     max_items: int,
     source_ref_map: dict[str, EvidenceSourceRef] | None,
-) -> UatDeploymentEvidence:
-    stages = [
-        stage for stage in canonical.execution_context.stages if _UAT_NAME_RE.search(stage.name)
+) -> tuple[
+    UatDeploymentEvidence,
+    list[LowerEnvironmentStageCandidateEvidence],
+    list[RejectedStageEvidence],
+    BackoutTimeDerivationEvidence,
+    list[str],
+]:
+    stage_ids = {stage.id for stage in canonical.execution_context.stages if stage.id}
+    containers: list[tuple[str, CanonicalStage | CanonicalJob]] = [
+        ("stage", stage) for stage in canonical.execution_context.stages
     ]
-    stage_ids = {stage.id for stage in stages if stage.id}
-    jobs = [
-        job
+    containers.extend(
+        ("job", job)
         for job in canonical.execution_context.jobs
-        if (job.parent_id and job.parent_id in stage_ids) or _UAT_NAME_RE.search(job.name)
-    ]
-    job_ids = {job.id for job in jobs if job.id}
-    tasks = [
-        task
-        for task in canonical.execution_context.tasks
-        if (
-            (task.parent_id and task.parent_id in stage_ids | job_ids)
-            or _UAT_NAME_RE.search(task.name)
-        )
-        and _contains_hint(task.name, _UAT_ACTIVITY_TERMS)
-    ][:max_items]
-    activity_items: list[tuple[str, CanonicalTask | CanonicalJob]] = [
-        ("task", task) for task in tasks
-    ]
-    if not activity_items:
-        activity_items = [
-            ("job", job)
-            for job in jobs
-            if _contains_hint(job.name, _UAT_ACTIVITY_TERMS)
-        ][:max_items]
-    activities = [
-        UatDeploymentActivityEvidence(
-            name=truncate_text(clean_text(item.name), 240) or "unknown",
-            status=clean_text(item.result) or clean_text(item.state),
-            duration_seconds=item.duration_seconds,
-            source_ref=_friendly_source_ref(source_type, item, source_ref_map),
-        )
-        for source_type, item in activity_items
-    ]
-    durations = [activity.duration_seconds for activity in activities]
-    total_duration: float | None = None
-    if activities and all(duration is not None for duration in durations):
-        total_duration = sum(float(duration) for duration in durations if duration is not None)
-    elif activities and stages and stages[0].duration_seconds is not None:
-        total_duration = stages[0].duration_seconds
-    stage_name = (
-        clean_text(stages[0].name)
-        if stages
-        else clean_text(jobs[0].name)
-        if jobs
-        else None
+        if normalize_environment_name(job.name) is not None
+        and (not job.parent_id or job.parent_id not in stage_ids)
     )
-    return UatDeploymentEvidence(
-        stage_name=stage_name,
-        activities=activities,
-        total_deployment_duration_seconds=total_duration,
+
+    candidates: list[LowerEnvironmentStageCandidateEvidence] = []
+    rejected: list[RejectedStageEvidence] = []
+    valid: list[
+        tuple[
+            int,
+            int,
+            str,
+            CanonicalStage | CanonicalJob,
+            list[tuple[str, CanonicalStage | CanonicalJob | CanonicalTask]],
+            LowerEnvironmentStageCandidateEvidence,
+        ]
+    ] = []
+    timing_missing = False
+    for index, (source_type, container) in enumerate(containers):
+        environment = normalize_environment_name(container.name)
+        activities = _container_activity_items(canonical, container, source_type)
+        duration = (
+            (container.finish_time - container.start_time).total_seconds()
+            if container.start_time is not None and container.finish_time is not None
+            else None
+        )
+        source_ref = _friendly_source_ref(source_type, container, source_ref_map)
+        candidate = LowerEnvironmentStageCandidateEvidence(
+            stage_name=clean_text(container.name) or "unknown",
+            normalized_environment=environment,
+            state=clean_text(container.state),
+            result=clean_text(container.result),
+            start_time=container.start_time,
+            finish_time=container.finish_time,
+            duration_seconds=duration,
+            deployment_activities=[item.name for _, item in activities],
+            source_ref=source_ref,
+        )
+        if environment is not None:
+            candidates.append(candidate)
+        reason = _stage_rejection_reason(container, environment, activities)
+        if reason is not None:
+            rejected.append(RejectedStageEvidence(stage_name=container.name, reason=reason))
+            if "timing" in reason.lower() and environment not in {None, "PRODUCTION"}:
+                timing_missing = True
+            continue
+        valid.append(
+            (
+                environment_priority(environment),
+                index,
+                source_type,
+                container,
+                activities,
+                candidate,
+            )
+        )
+
+    valid.sort(key=lambda item: (item[0], item[1]))
+    selected = valid[0] if valid else None
+    if selected is not None:
+        _, _, source_type, container, activity_items, selected_candidate = selected
+        selected_candidate.selected = True
+        selected_environment = normalize_environment_name(container.name)
+        selected_ref = _friendly_source_ref(source_type, container, source_ref_map)
+        activity_items = activity_items[:max_items]
+        activity_evidence = [
+            UatDeploymentActivityEvidence(
+                name=truncate_text(clean_text(item.name), 240) or "unknown",
+                status=clean_text(item.result) or clean_text(item.state),
+                duration_seconds=item.duration_seconds,
+                source_ref=_friendly_source_ref(item_type, item, source_ref_map),
+            )
+            for item_type, item in activity_items
+        ]
+        assert container.start_time is not None
+        assert container.finish_time is not None
+        duration = (container.finish_time - container.start_time).total_seconds()
+        deployment = UatDeploymentEvidence(
+            stage_name=clean_text(container.name),
+            selected_environment=selected_environment,
+            stage_start_time=container.start_time,
+            stage_finish_time=container.finish_time,
+            activities=activity_evidence,
+            total_deployment_duration_seconds=duration,
+        )
+        derivation = BackoutTimeDerivationEvidence(
+            environment_priority=list(ENVIRONMENT_PRIORITY),
+            selected_environment=selected_environment,
+            selected_stage_name=clean_text(container.name),
+            stage_start_time=container.start_time,
+            stage_finish_time=container.finish_time,
+            source_duration_seconds=duration,
+            final_estimate_minutes=round_up_backout_minutes(duration),
+            evidence_refs=dedupe_preserve_order(
+                [
+                    selected_ref,
+                    *(item.source_ref for item in activity_evidence if item.source_ref),
+                ]
+            ),
+        )
+        for _, _, _, other, _, _ in valid[1:]:
+            other_environment = normalize_environment_name(other.name)
+            if other_environment == selected_environment:
+                reason = "Another valid stage for the selected environment was preferred."
+            else:
+                reason = f"Lower priority than selected {selected_environment} environment."
+            rejected.append(RejectedStageEvidence(stage_name=other.name, reason=reason))
+        return deployment, candidates, rejected, derivation, []
+
+    warnings = ["BACKOUT_DURATION_LOWER_ENVIRONMENT_NOT_FOUND"]
+    if timing_missing:
+        warnings.append("BACKOUT_DURATION_STAGE_TIMING_MISSING")
+    return (
+        UatDeploymentEvidence(),
+        candidates,
+        rejected,
+        BackoutTimeDerivationEvidence(environment_priority=list(ENVIRONMENT_PRIORITY)),
+        warnings,
     )
 
 
@@ -819,26 +977,208 @@ def _collect_matching_evidence(
     )
 
 
-def _application_candidates(
+def _deployment_target(name: str | None) -> str | None:
+    text = clean_text(name) or ""
+    patterns = (
+        r"\b(?:apply\s+solution\s+upgrade|upgrade\s+solution|import\s+solution|"
+        r"deploy\s+solution)\s+(.+)$",
+        r"\b(?:deploy\s+(?:application|app|service)|install\s+package|deploy\s+package)"
+        r"\s+(.+)$",
+    )
+    for pattern in patterns:
+        match = re.search(pattern, text, re.IGNORECASE)
+        if match:
+            target = re.split(
+                r"\s+to\s+(?:uat|qa|test|intg|integration|sit|dev|development|prod|production)\b",
+                match.group(1),
+                maxsplit=1,
+                flags=re.IGNORECASE,
+            )[0]
+            return target.strip(" ._-:") or None
+    return None
+
+
+def _application_resolution(
     canonical: CanonicalDodDocument,
-    sources: list[tuple[str, str | None]],
+    deployment: UatDeploymentEvidence,
     max_items: int,
-) -> list[str]:
-    candidates: list[str] = []
-    for text, _ in sources:
-        candidates.extend(match.group(1).strip() for match in _APPLICATION_PHRASE_RE.finditer(text))
-    candidates.extend(canonical.risk_context.impacted_components)
-    if canonical.run_context.repository_name:
-        candidates.append(canonical.run_context.repository_name)
-    safe_candidates = [
-        truncate_text(clean_text(value), 160) or ""
-        for value in candidates
-        if is_meaningful_text(clean_text(value))
-        and "refs/heads/" not in (clean_text(value) or "").lower()
-        and "/" not in (clean_text(value) or "")
-        and "\\" not in (clean_text(value) or "")
-    ]
-    return [value for value in dedupe_preserve_order(safe_candidates) if value][:max_items]
+) -> ApplicationResolutionEvidence:
+    ranked: dict[str, dict[str, Any]] = {}
+
+    def add_candidate(value: str | None, source: str, base_score: int) -> None:
+        cleaned = truncate_text(clean_text(value), 160)
+        normalized = normalize_application_candidate(cleaned)
+        if not cleaned or not normalized or "refs/heads/" in cleaned.lower():
+            return
+        entry = ranked.setdefault(
+            normalized,
+            {"candidate": cleaned, "base_score": base_score, "sources": []},
+        )
+        entry["base_score"] = max(int(entry["base_score"]), base_score)
+        if source not in entry["sources"]:
+            entry["sources"].append(source)
+
+    stage_ids = {
+        stage.id
+        for stage in canonical.execution_context.stages
+        if stage.id and normalize_environment_name(stage.name) == "PRODUCTION"
+    }
+    production_job_ids = {
+        job.id
+        for job in canonical.execution_context.jobs
+        if job.id
+        and (
+            (job.parent_id and job.parent_id in stage_ids)
+            or normalize_environment_name(job.name) == "PRODUCTION"
+        )
+    }
+    production_parent_ids = stage_ids | production_job_ids
+    production_targets: list[str] = []
+    for task in canonical.execution_context.tasks:
+        if (
+            task.parent_id
+            and task.parent_id in production_parent_ids
+            and is_deployment_activity_name(task.name)
+        ):
+            target = _deployment_target(task.name)
+            if target:
+                production_targets.append(target)
+                add_candidate(target, "production_deployment", 120)
+
+    repository = canonical.run_context.repository_name
+    pipeline = canonical.run_context.pipeline_name
+    add_candidate(repository, "repository", 100)
+    add_candidate(pipeline, "pipeline", 90)
+
+    lower_targets: list[str] = []
+    lower_environment_source = (
+        f"{deployment.selected_environment.lower()}_deployment"
+        if deployment.selected_environment
+        else "lower_environment_deployment"
+    )
+    for activity in deployment.activities:
+        target = _deployment_target(activity.name)
+        if target:
+            lower_targets.append(target)
+            add_candidate(target, lower_environment_source, 80)
+
+    for task in canonical.execution_context.tasks:
+        if not is_deployment_activity_name(task.name):
+            continue
+        target = _deployment_target(task.name)
+        kind = deployment_action_kind(task.name)
+        if target and kind in {
+            "solution_upgrade",
+            "solution_import",
+            "solution_deploy",
+            "package_deploy",
+        }:
+            add_candidate(target, "solution_or_package", 75)
+
+    for work_item in canonical.change_context.work_items:
+        for match in _APPLICATION_PHRASE_RE.finditer(clean_text(work_item.title) or ""):
+            add_candidate(match.group(1), "work_item_title", 50)
+        for value in (work_item.description, work_item.acceptance_criteria):
+            for match in _APPLICATION_PHRASE_RE.finditer(clean_text(value) or ""):
+                add_candidate(match.group(1), "change_description", 35)
+
+    for component in canonical.risk_context.impacted_components:
+        add_candidate(component, "impacted_component", 60)
+    add_candidate(canonical.project, "project", 10)
+
+    repository_key = normalize_application_candidate(repository)
+    if repository_key and repository_key in ranked:
+        repository_tokens = {
+            token for token in repository_key.split() if len(token) >= 3 and token != "application"
+        }
+
+        def aligns_with_repository(target: str) -> bool:
+            target_tokens = {
+                token
+                for token in normalize_application_candidate(target).split()
+                if len(token) >= 3
+            }
+            return bool(repository_tokens & target_tokens)
+
+        if any(aligns_with_repository(target) for target in lower_targets):
+            sources = ranked[repository_key]["sources"]
+            if lower_environment_source not in sources:
+                sources.append(lower_environment_source)
+        for target in production_targets:
+            target_key = normalize_application_candidate(target)
+            if target_key == repository_key or not aligns_with_repository(target):
+                continue
+            repository_entry = ranked[repository_key]
+            repository_entry["base_score"] = 120
+            if "production_deployment" not in repository_entry["sources"]:
+                repository_entry["sources"].append("production_deployment")
+            technical_target = ranked.get(target_key)
+            if technical_target is not None:
+                technical_target["base_score"] = min(
+                    int(technical_target["base_score"]),
+                    80,
+                )
+
+    candidate_scores: list[ApplicationCandidateScoreEvidence] = []
+    for _normalized, entry in ranked.items():
+        independent_bonus = min(max(len(entry["sources"]) - 1, 0) * 5, 15)
+        score = min(int(entry["base_score"]) + independent_bonus, 120)
+        candidate_scores.append(
+            ApplicationCandidateScoreEvidence(
+                candidate=str(entry["candidate"]),
+                score=score,
+                sources=list(entry["sources"]),
+            )
+        )
+    candidate_scores.sort(
+        key=lambda item: (-item.score, normalize_application_candidate(item.candidate))
+    )
+    candidate_scores = candidate_scores[:max_items]
+    if not candidate_scores:
+        candidate_scores = [
+            ApplicationCandidateScoreEvidence(
+                candidate="deployed application",
+                score=0,
+                sources=["deterministic_fallback"],
+            )
+        ]
+    selected = candidate_scores[0]
+    selected_sources = set(selected.sources)
+    if "repository" in selected_sources:
+        has_lower_deployment = any(
+            source.endswith("_deployment") and source != "production_deployment"
+            for source in selected_sources
+        )
+        if (
+            "production_deployment" in selected_sources
+            and "pipeline" in selected_sources
+            and has_lower_deployment
+        ):
+            reason = (
+                "Mapped production solution evidence to matching repository/pipeline identity "
+                "and lower-environment solution deployment evidence."
+            )
+        elif "pipeline" in selected_sources and has_lower_deployment:
+            reason = (
+                "Matched repository/pipeline identity and lower-environment solution "
+                "deployment evidence."
+            )
+        elif has_lower_deployment:
+            reason = "Matched repository identity and lower-environment deployment evidence."
+        else:
+            reason = "Matched repository identity as the strongest deployed-application evidence."
+    elif "production_deployment" in selected_sources:
+        reason = "Matched explicit production deployment application or solution evidence."
+    elif "pipeline" in selected_sources:
+        reason = "Selected the normalized pipeline application identity."
+    else:
+        reason = "Selected the highest-ranked concrete application candidate."
+    return ApplicationResolutionEvidence(
+        selected_application=selected.candidate,
+        display_name=display_application_name(selected.candidate),
+        selection_reason=reason,
+        candidate_scores=candidate_scores,
+    )
 
 
 def build_bucket_3_rollback_risk(
@@ -900,7 +1240,13 @@ def build_bucket_3_rollback_risk(
     risk_signals = [value for value in risk_signals if value]
 
     sources = _bucket_3_text_sources(canonical, source_ref_map)
-    uat_deployment = _build_uat_deployment_evidence(
+    (
+        uat_deployment,
+        environment_candidates,
+        rejected_stages,
+        backout_time_derivation,
+        bucket_3_warnings,
+    ) = _lower_environment_deployment_evidence(
         canonical,
         max_items_per_section,
         source_ref_map,
@@ -916,11 +1262,14 @@ def build_bucket_3_rollback_risk(
         _HIGH_RISK_PATTERNS,
         max_items_per_section,
     )
-    application_candidates = _application_candidates(
+    application_resolution = _application_resolution(
         canonical,
-        sources,
+        uat_deployment,
         max_items_per_section,
     )
+    application_candidates = [
+        item.candidate for item in application_resolution.candidate_scores
+    ]
 
     gaps = list(canonical.risk_context.missing_risk_context)
     if not artifact_evidence:
@@ -931,6 +1280,8 @@ def build_bucket_3_rollback_risk(
         gaps.append("no impacted components detected")
     if canonical.quality_context.test_summary.total_tests == 0:
         gaps.append("no test context available")
+    if "BACKOUT_DURATION_LOWER_ENVIRONMENT_NOT_FOUND" in bucket_3_warnings:
+        gaps.append("no valid lower-environment deployment stage found")
     if artifact_truncated or warning_truncated:
         gaps.append("section truncation applied")
 
@@ -939,6 +1290,7 @@ def build_bucket_3_rollback_risk(
             *(item.source_ref for item in artifact_evidence if item.source_ref),
             *(item.source_ref for item in combined if item.source_ref),
             *(item.source_ref for item in uat_deployment.activities if item.source_ref),
+            *backout_time_derivation.evidence_refs,
             *resiliency_evidence.evidence_refs,
             *planned_impact_refs,
             *high_risk_refs,
@@ -962,11 +1314,16 @@ def build_bucket_3_rollback_risk(
         risk_flags=risk_flags,
         risk_signals=risk_signals,
         uat_deployment=uat_deployment,
+        environment_candidates=environment_candidates,
+        rejected_stages=rejected_stages,
+        backout_time_derivation=backout_time_derivation,
         resiliency_evidence=resiliency_evidence,
         application_candidates=application_candidates,
+        application_resolution=application_resolution,
         planned_impact_evidence=planned_impact_evidence,
         high_risk_evidence=high_risk_evidence,
         failed_or_warning_evidence=combined,
+        warnings=bucket_3_warnings,
         evidence_gaps=dedupe_preserve_order(gaps),
         evidence_references=references,
     )
@@ -997,6 +1354,7 @@ def build_evidence_bundle(
         warnings.append("bucket_2_has_gaps")
     if bucket_3.evidence_gaps:
         warnings.append("bucket_3_has_gaps")
+    warnings.extend(bucket_3.warnings)
     truncation_applied = any("truncation" in gap for gap in missing_sections)
 
     metadata = EvidenceGenerationMetadata(

@@ -3,9 +3,19 @@
 from __future__ import annotations
 
 import re
+from datetime import datetime
 from difflib import SequenceMatcher
 from typing import Any
 
+from backend.app.services.evidence.bucket_3_selection import (
+    deployment_action_kind,
+    display_application_name,
+    environment_priority,
+    format_backout_minutes,
+    is_deployment_activity_name,
+    normalize_application_candidate,
+    round_up_backout_minutes,
+)
 from backend.app.services.llm.json_parser import JsonParseError, extract_json_object
 
 ALIASES = {
@@ -112,9 +122,13 @@ _BACKOUT_DELIVERY_METADATA_PATTERNS = (
         re.IGNORECASE,
     ),
 )
-_CONFIRM_BACKOUT_DURATION = (
-    "Estimated backout time: To be confirmed by the implementation team before change execution."
+_UNAVAILABLE_BACKOUT_DURATION = (
+    "Estimated backout time: Not available from the pipeline evidence."
 )
+_BACKOUT_DURATION_LINE_RE = re.compile(
+    r"(?im)^\s*Estimated backout time\s*:\s*.+$"
+)
+_BACKOUT_STEP_LINE_RE = re.compile(r"(?m)^\s*(?:\d+[.)]|[-*])\s+\S+")
 _RESILIENCY_BOOL_FIELDS = (
     "active_active",
     "rolling_deployment",
@@ -178,36 +192,98 @@ def detect_delivery_detail_leakage(text: str) -> bool:
 def detect_backout_delivery_metadata_leakage(text: str) -> bool:
     """Return whether backout text exposes delivery or release metadata."""
 
-    return any(pattern.search(text) for pattern in _BACKOUT_DELIVERY_METADATA_PATTERNS)
+    candidate = text.replace(_UNAVAILABLE_BACKOUT_DURATION, "")
+    return any(pattern.search(candidate) for pattern in _BACKOUT_DELIVERY_METADATA_PATTERNS)
 
 
 def expected_backout_duration_statement(evidence_bundle: dict[str, Any]) -> str:
     """Return an evidence-grounded, practically rounded backout duration statement."""
 
     bucket = bucket_3_evidence(evidence_bundle)
+    derivation = _dict_value(bucket.get("backout_time_derivation"))
+    candidate_duration = _best_lower_environment_stage_duration(bucket)
+    if candidate_duration is not None:
+        rounded_minutes = round_up_backout_minutes(candidate_duration)
+        if rounded_minutes is not None:
+            return (
+                "Estimated backout time: approximately "
+                f"{format_backout_minutes(rounded_minutes)}."
+            )
+    method = derivation.get("calculation_method")
+    selected_environment = derivation.get("selected_environment")
+    valid_derivation = (
+        method in {None, "", "lower_environment_stage_duration"}
+        and selected_environment != "PRODUCTION"
+    )
+    minutes = derivation.get("final_estimate_minutes")
+    if (
+        valid_derivation
+        and not isinstance(minutes, bool)
+        and isinstance(minutes, int | float)
+        and minutes > 0
+    ):
+        rounded_minutes = int(minutes)
+        return (
+            "Estimated backout time: approximately "
+            f"{format_backout_minutes(rounded_minutes)}."
+        )
+    source_duration = derivation.get("source_duration_seconds") if valid_derivation else None
+    rounded_minutes = round_up_backout_minutes(source_duration)
+    if rounded_minutes is not None:
+        return (
+            "Estimated backout time: approximately "
+            f"{format_backout_minutes(rounded_minutes)}."
+        )
     uat_deployment = _dict_value(bucket.get("uat_deployment"))
     duration = uat_deployment.get("total_deployment_duration_seconds")
-    if isinstance(duration, bool) or not isinstance(duration, int | float) or duration <= 0:
-        return _CONFIRM_BACKOUT_DURATION
-    minutes = float(duration) / 60
-    if minutes <= 10:
-        estimate = "10 minutes"
-    elif minutes <= 20:
-        estimate = "20 minutes"
-    elif minutes <= 30:
-        estimate = "30 minutes"
-    elif minutes <= 45:
-        estimate = "45 minutes"
-    elif minutes <= 60:
-        estimate = "1 hour"
-    else:
-        rounded_minutes = int((minutes + 29) // 30 * 30)
-        hours, remainder = divmod(rounded_minutes, 60)
-        if remainder == 0:
-            estimate = f"{hours} hours"
-        else:
-            estimate = f"{hours} hour{'s' if hours != 1 else ''} {remainder} minutes"
-    return f"Estimated backout time: approximately {estimate}."
+    rounded_minutes = round_up_backout_minutes(duration)
+    if rounded_minutes is None:
+        return _UNAVAILABLE_BACKOUT_DURATION
+    return (
+        "Estimated backout time: approximately "
+        f"{format_backout_minutes(rounded_minutes)}."
+    )
+
+
+def _best_lower_environment_stage_duration(bucket: dict[str, Any]) -> float | None:
+    candidates = bucket.get("environment_candidates")
+    if not isinstance(candidates, list):
+        return None
+    valid: list[tuple[int, int, float]] = []
+    for index, candidate in enumerate(candidates):
+        if not isinstance(candidate, dict):
+            continue
+        environment = str(candidate.get("normalized_environment") or "")
+        if environment in {"", "PRODUCTION"} or not candidate.get("deployment_activities"):
+            continue
+        result = re.sub(r"[^a-z]", "", str(candidate.get("result") or "").lower())
+        state = re.sub(r"[^a-z]", "", str(candidate.get("state") or "").lower())
+        if result in {"failed", "canceled", "cancelled", "skipped", "abandoned"}:
+            continue
+        if state in {"canceled", "cancelled", "skipped", "notstarted", "pending"}:
+            continue
+        start = _parse_evidence_datetime(candidate.get("start_time"))
+        finish = _parse_evidence_datetime(candidate.get("finish_time"))
+        if start is None or finish is None:
+            continue
+        duration = (finish - start).total_seconds()
+        if duration > 0:
+            valid.append((environment_priority(environment), index, duration))
+    if not valid:
+        return None
+    valid.sort(key=lambda item: (item[0], item[1]))
+    return valid[0][2]
+
+
+def _parse_evidence_datetime(value: Any) -> datetime | None:
+    if isinstance(value, datetime):
+        return value
+    if not isinstance(value, str) or not value.strip():
+        return None
+    try:
+        return datetime.fromisoformat(value.strip().replace("Z", "+00:00"))
+    except ValueError:
+        return None
 
 
 def repair_bucket_3_fields(
@@ -222,7 +298,7 @@ def repair_bucket_3_fields(
     backout = repaired.get("backout_plan")
     repair_backout = fields_to_repair is None or "backout_plan" in fields_to_repair
     if repair_backout and isinstance(backout, str) and backout.strip():
-        normalized_backout = _build_backout_plan(backout, evidence_bundle)
+        normalized_backout = _repair_backout_plan(backout, evidence_bundle)
         if normalized_backout != backout.strip():
             repaired["backout_plan"] = normalized_backout
             notes.append("Normalized backout plan to evidence-grounded steps and duration.")
@@ -361,56 +437,73 @@ def _remove_repeated_justification_sentences(
     return justification.strip()
 
 
-def _build_backout_plan(generated_text: str, evidence_bundle: dict[str, Any]) -> str:
+def _repair_backout_plan(generated_text: str, evidence_bundle: dict[str, Any]) -> str:
+    expected_duration = expected_backout_duration_statement(evidence_bundle)
+    has_operational_steps = len(_BACKOUT_STEP_LINE_RE.findall(generated_text)) >= 2
+    if (
+        has_operational_steps
+        and len(normalized_words(generated_text)) <= 120
+        and not detect_backout_delivery_metadata_leakage(generated_text)
+    ):
+        without_duration = _BACKOUT_DURATION_LINE_RE.sub("", generated_text).strip()
+        return f"{without_duration}\n\n{expected_duration}"
+    return _build_backout_plan(evidence_bundle)
+
+
+def _build_backout_plan(evidence_bundle: dict[str, Any]) -> str:
     bucket = bucket_3_evidence(evidence_bundle)
     uat_deployment = _dict_value(bucket.get("uat_deployment"))
     activity_names = [
         str(item.get("name") or "")
         for item in uat_deployment.get("activities", [])
-        if isinstance(item, dict) and str(item.get("name") or "").strip()
+        if isinstance(item, dict)
+        and is_deployment_activity_name(str(item.get("name") or ""))
     ]
-    evidence_text = " ".join(activity_names)
-    if not evidence_text:
-        evidence_text = generated_text
-    steps = _backout_steps_for_actions(evidence_text)
+    application = _business_readable_application(bucket)
+    steps = _backout_steps_for_actions(activity_names, application)
     lines = [f"{index}. {step}" for index, step in enumerate(steps, start=1)]
     lines.append("")
     lines.append(expected_backout_duration_statement(evidence_bundle))
     return "\n".join(lines)
 
 
-def _backout_steps_for_actions(text: str) -> list[str]:
-    lowered = text.lower()
+def _backout_steps_for_actions(activity_names: list[str], application: str) -> list[str]:
+    action_kinds = {
+        kind for name in activity_names if (kind := deployment_action_kind(name)) is not None
+    }
     steps = ["Stop or pause the production deployment."]
     reverse_actions: list[str] = []
-    if any(term in lowered for term in ("deploy", "import", "solution", "package", "redeploy")):
+    if "solution_upgrade" in action_kinds:
         reverse_actions.append(
-            "Redeploy the previously validated solution or application package used before "
-            "this change."
+            "Redeploy the previously validated solution used before this change."
         )
-    if any(
-        term in lowered
-        for term in ("configuration", "config", "environment variable", "setting")
-    ):
+        reverse_actions.append("Apply the prior solution state to restore the production behavior.")
+    if "solution_import" in action_kinds:
+        reverse_actions.append("Import the previously validated solution used before this change.")
+    if "solution_deploy" in action_kinds:
         reverse_actions.append(
-            "Restore the prior application configuration and environment settings."
+            "Redeploy the previously validated solution used before this change."
         )
-    if any(term in lowered for term in ("dependency", "library", "runtime")):
-        reverse_actions.append("Restore the prior dependency settings used by the application.")
-    if any(term in lowered for term in ("database", "schema", "sql", "migration")):
+    if "application_deploy" in action_kinds:
+        reverse_actions.append("Redeploy the previously validated application state.")
+    if "package_deploy" in action_kinds:
+        reverse_actions.append("Reinstall the previously validated application package.")
+    if "customization_publish" in action_kinds:
+        reverse_actions.append("Restore and publish the prior application customizations.")
+    if "configuration_apply" in action_kinds:
+        reverse_actions.append(
+            "Restore the prior application configuration."
+        )
+    if "database_deploy" in action_kinds:
         reverse_actions.append("Reverse the database deployment actions applied by this change.")
-    if any(term in lowered for term in ("infrastructure", "terraform", "bicep", "network")):
+    if "infrastructure_deploy" in action_kinds:
         reverse_actions.append("Restore the prior infrastructure configuration.")
-    if any(term in lowered for term in ("restart", "start service", "stop service")):
+    if "service_restart" in action_kinds:
         reverse_actions.append("Restart the impacted application service after restoration.")
     if not reverse_actions:
-        reverse_actions.append("Restore the application or configuration to its pre-change state.")
+        reverse_actions.append("Restore the application to its pre-change state.")
     steps.extend(_dedupe_text(reverse_actions))
-    if any(
-        term in lowered
-        for term in ("validate", "validation", "smoke", "health", "checker", "test")
-    ):
-        steps.append("Validate the impacted application and its critical functions.")
+    steps.append(f"Validate that the {application} and its affected workflows operate normally.")
     return _dedupe_text(steps)
 
 
@@ -420,26 +513,26 @@ def _build_risk_impact_analysis(evidence_bundle: dict[str, Any]) -> str:
     likelihood = _likelihood_from_evidence(bucket)
     planned_impact = _planned_impact_statement(bucket)
     risk_scope = _risk_scope(bucket)
-    potential_application = (
-        "application or service associated with this deployment"
-        if application.startswith("Application or service associated")
-        else application
-    )
     potential = (
-        f"Potential impact: The {potential_application} may experience temporary functional "
-        "degradation "
+        f"Potential impact: {application} may experience temporary functional degradation "
         f"in {risk_scope} if the change does not complete successfully."
     )
-    mitigation = ""
+    mitigation: str | None = None
     uat = _dict_value(bucket.get("uat_deployment"))
     if uat.get("activities") or bucket.get("rollback_indicators"):
-        mitigation = " The change can be backed out using the documented backout steps."
-    return (
-        f"{planned_impact}\n\n"
-        f"Impacted application: {application}.\n\n"
-        f"Likelihood of unplanned impact: {likelihood}.\n\n"
-        f"{potential}{mitigation}"
-    )
+        mitigation = (
+            "Mitigation: The previous application state can be restored using the "
+            "documented backout steps."
+        )
+    parts = [
+        planned_impact,
+        f"Impacted application: {application}.",
+        f"Likelihood of unplanned impact: {likelihood}.",
+        potential,
+    ]
+    if mitigation:
+        parts.append(mitigation)
+    return "\n\n".join(parts)
 
 
 def _planned_impact_statement(bucket: dict[str, Any]) -> str:
@@ -468,11 +561,36 @@ def _planned_impact_statement(bucket: dict[str, Any]) -> str:
 
 
 def _business_readable_application(bucket: dict[str, Any]) -> str:
+    resolution = _dict_value(bucket.get("application_resolution"))
+    candidate_scores = resolution.get("candidate_scores")
+    if isinstance(candidate_scores, list):
+        ranked = [
+            item
+            for item in candidate_scores
+            if isinstance(item, dict)
+            and isinstance(item.get("candidate"), str)
+            and isinstance(item.get("score"), int | float)
+        ]
+        ranked.sort(
+            key=lambda item: (
+                -float(item["score"]),
+                normalize_application_candidate(str(item["candidate"])),
+            )
+        )
+        if ranked:
+            return display_application_name(str(ranked[0]["candidate"]))
+    display_name = resolution.get("display_name")
+    if isinstance(display_name, str) and normalize_application_candidate(display_name):
+        return display_application_name(display_name)
     candidates = bucket.get("application_candidates")
     if not isinstance(candidates, list):
         candidates = []
     service_context = _dict_value(bucket.get("service_context"))
-    candidates = [*candidates, service_context.get("repository_name")]
+    candidates = [
+        service_context.get("repository_name"),
+        service_context.get("pipeline_name"),
+        *candidates,
+    ]
     impacted = bucket.get("impacted_components")
     if isinstance(impacted, list):
         candidates.extend(impacted)
@@ -482,32 +600,10 @@ def _business_readable_application(bucket: dict[str, Any]) -> str:
         cleaned = value.strip().removeprefix("the ").removeprefix("The ")
         if "refs/heads/" in cleaned.lower() or "/" in cleaned or "\\" in cleaned:
             continue
-        cleaned = re.sub(r"[-_.]+", " ", cleaned)
-        cleaned = re.sub(
-            r"\b(?:build|release|deployment)\s+pipeline\b",
-            "",
-            cleaned,
-            flags=re.IGNORECASE,
-        )
-        cleaned = re.sub(r"\s+", " ", cleaned).strip(" -")
-        if not cleaned:
+        if not normalize_application_candidate(cleaned):
             continue
-        acronym_tokens = {"ado", "api", "asac", "crm", "dod", "ui"}
-        words = [
-            word.upper() if word.lower() in acronym_tokens else word.capitalize()
-            for word in cleaned.split()
-        ]
-        readable = " ".join(words)
-        lowered = readable.lower()
-        if lowered.endswith(" api") and "service" not in lowered:
-            return f"{readable} service"
-        if "application" not in lowered and "service" not in lowered:
-            return f"{readable} application"
-        return readable
-    return (
-        "Application or service associated with this deployment; confirmation is required "
-        "before change submission"
-    )
+        return display_application_name(cleaned)
+    return "Deployed application"
 
 
 def _likelihood_from_evidence(bucket: dict[str, Any]) -> str:

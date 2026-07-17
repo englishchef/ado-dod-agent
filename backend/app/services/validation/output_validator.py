@@ -14,6 +14,11 @@ from backend.app.models.validated_outputs import (
     ServiceNowPayload,
     ValidationIssue,
 )
+from backend.app.services.evidence.bucket_3_selection import (
+    display_application_name,
+    normalize_application_candidate,
+    normalize_environment_name,
+)
 from backend.app.services.validation.output_repair import (
     bucket_3_claim_evidence_text,
     detect_backout_delivery_metadata_leakage,
@@ -74,6 +79,17 @@ _UNSUPPORTED_RISK_CLAIMS = (
 _RISK_DELIVERY_METADATA_RE = re.compile(
     r"\b(?:artifact|branch|build(?:\s+(?:id|number))?|commit|pipeline|version\s+\d)\b|"
     r"\bAzure\s+DevOps\b|\bCI\s*/\s*CD\b",
+    re.IGNORECASE,
+)
+_CONFIRMATION_LANGUAGE_RE = re.compile(
+    r"\b(?:to be confirmed|confirmation required|must be confirmed|"
+    r"implementation team (?:should|must) confirm|submitter must confirm|"
+    r"requires confirmation|application or service associated with this deployment|"
+    r"one of the following applications)\b",
+    re.IGNORECASE,
+)
+_IMPACTED_APPLICATION_VALUE_RE = re.compile(
+    r"\bImpacted (?:application|service)\s*:\s*([^\n]+)",
     re.IGNORECASE,
 )
 
@@ -253,6 +269,17 @@ def validate_bucket_3_fields(
     issues: list[ValidationIssue] = []
     backout = payload_dict.get("backout_plan")
     if isinstance(backout, str) and backout.strip():
+        if _CONFIRMATION_LANGUAGE_RE.search(backout):
+            issues.append(
+                _issue(
+                    "warning",
+                    "BACKOUT_PLAN_CONFIRMATION_LANGUAGE",
+                    "Backout plan must use deterministic evidence wording without "
+                    "confirmation language.",
+                    "backout_plan",
+                    bucket,
+                )
+            )
         if detect_backout_delivery_metadata_leakage(backout):
             issues.append(
                 _issue(
@@ -302,12 +329,13 @@ def validate_bucket_3_fields(
                     _issue(
                         "warning",
                         "BACKOUT_DURATION_UNSUPPORTED",
-                        "Backout duration does not match the rounded UAT timing evidence or "
-                        "confirmation fallback.",
+                        "Backout duration does not match the rounded selected lower-environment "
+                        "deployment-stage timing evidence or unavailable-evidence fallback.",
                         "backout_plan",
                         bucket,
                     )
                 )
+        issues.extend(_backout_derivation_issues(evidence, bucket))
 
     risk = payload_dict.get("risk_impact_analysis")
     if not isinstance(risk, str) or not risk.strip():
@@ -321,6 +349,25 @@ def validate_bucket_3_fields(
                 "risk_impact_analysis",
                 bucket,
             )
+        )
+    if _CONFIRMATION_LANGUAGE_RE.search(risk):
+        issues.extend(
+            [
+                _issue(
+                    "warning",
+                    "IMPACT_APPLICATION_CONFIRMATION_LANGUAGE",
+                    "Impacted application must not contain confirmation language.",
+                    "risk_impact_analysis",
+                    bucket,
+                ),
+                _issue(
+                    "warning",
+                    "IMPACT_APPLICATION_AMBIGUOUS",
+                    "Impacted application must resolve to one concrete evidence-backed value.",
+                    "risk_impact_analysis",
+                    bucket,
+                ),
+            ]
         )
     if not re.search(r"\bPlanned impact\s*:\s*\S+", risk, re.IGNORECASE):
         issues.append(
@@ -342,6 +389,42 @@ def validate_bucket_3_fields(
                 bucket,
             )
         )
+    application_match = _IMPACTED_APPLICATION_VALUE_RE.search(risk)
+    if application_match is not None:
+        application_value = application_match.group(1).strip(" .")
+        if re.search(r"\bor\b", application_value, re.IGNORECASE):
+            issues.extend(
+                [
+                    _issue(
+                        "warning",
+                        "IMPACT_APPLICATION_MULTIPLE_ALTERNATIVES",
+                        "Impacted application must not contain alternatives joined by 'or'.",
+                        "risk_impact_analysis",
+                        bucket,
+                    ),
+                    _issue(
+                        "warning",
+                        "IMPACT_APPLICATION_AMBIGUOUS",
+                        "Impacted application must resolve to exactly one candidate.",
+                        "risk_impact_analysis",
+                        bucket,
+                    ),
+                ]
+            )
+        expected_application = _expected_application_display(evidence)
+        if expected_application and (
+            normalize_application_candidate(application_value)
+            != normalize_application_candidate(expected_application)
+        ):
+            issues.append(
+                _issue(
+                    "warning",
+                    "IMPACT_APPLICATION_WEAK_EVIDENCE_SELECTED",
+                    "Impacted application does not match the strongest deterministic candidate.",
+                    "risk_impact_analysis",
+                    bucket,
+                )
+            )
     likelihood_match = _LIKELIHOOD_RE.search(risk)
     if likelihood_match is None:
         issues.append(
@@ -439,6 +522,168 @@ def validate_bucket_3_fields(
             )
         )
     return issues
+
+
+def _backout_derivation_issues(
+    evidence_bundle: dict[str, Any],
+    bucket: str | None,
+) -> list[ValidationIssue]:
+    evidence = _bucket(evidence_bundle, "bucket_3")
+    derivation = evidence.get("backout_time_derivation")
+    if not isinstance(derivation, dict):
+        return []
+    issues: list[ValidationIssue] = []
+    method = str(derivation.get("calculation_method") or "")
+    if method and method != "lower_environment_stage_duration":
+        issues.append(
+            _issue(
+                "warning",
+                "BACKOUT_DURATION_WRONG_STAGE_TYPE",
+                "Backout duration must be calculated from a lower-environment deployment stage.",
+                "backout_plan",
+                bucket,
+            )
+        )
+    if re.search(r"(?:task|activity|sum)", method, re.IGNORECASE):
+        issues.append(
+            _issue(
+                "warning",
+                "BACKOUT_DURATION_TASK_LEVEL_CALCULATION_USED",
+                "Individual activity durations cannot be used for backout-time estimation.",
+                "backout_plan",
+                bucket,
+            )
+        )
+
+    selected_environment = str(derivation.get("selected_environment") or "")
+    selected_stage_name = str(derivation.get("selected_stage_name") or "")
+    if (
+        selected_environment == "PRODUCTION"
+        or normalize_environment_name(selected_stage_name) == "PRODUCTION"
+    ):
+        issues.append(
+            _issue(
+                "warning",
+                "BACKOUT_DURATION_PRODUCTION_STAGE_SELECTED",
+                "Production stages cannot be used for backout-time estimation.",
+                "backout_plan",
+                bucket,
+            )
+        )
+    if not selected_environment:
+        issues.append(
+            _issue(
+                "warning",
+                "BACKOUT_DURATION_LOWER_ENVIRONMENT_NOT_FOUND",
+                "No valid lower-environment deployment stage was available.",
+                "backout_plan",
+                bucket,
+            )
+        )
+        warnings = evidence.get("warnings")
+        if isinstance(warnings, list) and (
+            "BACKOUT_DURATION_STAGE_TIMING_MISSING" in warnings
+        ):
+            issues.append(
+                _issue(
+                    "warning",
+                    "BACKOUT_DURATION_STAGE_TIMING_MISSING",
+                    "Lower-environment deployment-stage start or finish timing is missing.",
+                    "backout_plan",
+                    bucket,
+                )
+            )
+        return issues
+    if not derivation.get("stage_start_time") or not derivation.get("stage_finish_time"):
+        issues.append(
+            _issue(
+                "warning",
+                "BACKOUT_DURATION_STAGE_TIMING_MISSING",
+                "Selected lower-environment deployment stage is missing start or finish timing.",
+                "backout_plan",
+                bucket,
+            )
+        )
+
+    candidates = evidence.get("environment_candidates")
+    if isinstance(candidates, list):
+        selected_candidate: dict[str, Any] | None = None
+        uat_available = False
+        for candidate in candidates:
+            if not isinstance(candidate, dict):
+                continue
+            if candidate.get("selected") is True:
+                selected_candidate = candidate
+            if (
+                candidate.get("normalized_environment") == "UAT"
+                and candidate.get("duration_seconds")
+                and candidate.get("deployment_activities")
+                and _successful_candidate(candidate)
+            ):
+                uat_available = True
+        if selected_candidate is not None and not selected_candidate.get(
+            "deployment_activities"
+        ):
+            issues.append(
+                _issue(
+                    "warning",
+                    "BACKOUT_DURATION_WRONG_STAGE_TYPE",
+                    "Selected stage does not contain a valid deployment activity.",
+                    "backout_plan",
+                    bucket,
+                )
+            )
+        if selected_environment != "UAT" and uat_available:
+            issues.append(
+                _issue(
+                    "warning",
+                    "BACKOUT_DURATION_WRONG_STAGE_TYPE",
+                    "A valid UAT deployment stage exists and must take priority.",
+                    "backout_plan",
+                    bucket,
+                )
+            )
+    return issues
+
+
+def _successful_candidate(candidate: dict[str, Any]) -> bool:
+    result = re.sub(r"[^a-z]", "", str(candidate.get("result") or "").lower())
+    state = re.sub(r"[^a-z]", "", str(candidate.get("state") or "").lower())
+    if result in {"failed", "canceled", "cancelled", "skipped", "abandoned"}:
+        return False
+    if state in {"canceled", "cancelled", "skipped", "notstarted", "pending"}:
+        return False
+    return (
+        result in {"succeeded", "succeededwithissues", "partiallysucceeded"}
+        or state in {"completed", "inprogress"}
+        or bool(candidate.get("finish_time"))
+    )
+
+
+def _expected_application_display(evidence_bundle: dict[str, Any]) -> str | None:
+    bucket = _bucket(evidence_bundle, "bucket_3")
+    resolution = bucket.get("application_resolution")
+    if not isinstance(resolution, dict):
+        return None
+    candidate_scores = resolution.get("candidate_scores")
+    if isinstance(candidate_scores, list):
+        ranked = [
+            item
+            for item in candidate_scores
+            if isinstance(item, dict)
+            and isinstance(item.get("candidate"), str)
+            and isinstance(item.get("score"), int | float)
+        ]
+        ranked.sort(
+            key=lambda item: (
+                -float(item["score"]),
+                normalize_application_candidate(str(item["candidate"])),
+            )
+        )
+        if ranked:
+            return display_application_name(str(ranked[0]["candidate"]))
+    display_name = resolution.get("display_name")
+    return display_name if isinstance(display_name, str) and display_name.strip() else None
 
 
 def validate_service_now_payload(

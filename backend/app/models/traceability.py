@@ -29,5 +29,10 @@ class TraceabilityReport(TraceabilityBaseModel):
     source_llm_outputs_path: str | None = None
     source_evidence_bundle_path: str | None = None
     field_traceability: dict[str, FieldTraceability] = Field(default_factory=dict)
+    environment_candidates: list[dict[str, Any]] = Field(default_factory=list)
+    backout_time_derivation: dict[str, Any] | None = None
+    rejected_stages: list[dict[str, Any]] = Field(default_factory=list)
+    deployment_activities_used: list[dict[str, Any]] = Field(default_factory=list)
+    application_resolution: dict[str, Any] | None = None
     source_ref_map: dict[str, Any] = Field(default_factory=dict)
     warnings: list[str] = Field(default_factory=list)

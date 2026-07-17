@@ -281,16 +281,23 @@ Bucket 3 field guidance:
 ### Backout Plan
 
 - List only the operational steps required to reverse the change.
-- Derive the steps primarily from normalized UAT deployment activities.
-- Include an approximate backout duration based on observed UAT deployment timing. When reliable
-  timing is unavailable, state that the implementation team must confirm the duration before
-  change execution; do not fabricate an estimate.
+- Derive steps only from valid lower-environment deployment actions. Metadata retrieval such as
+  `Get Base Solution Versions`, artifact handling, approvals, waits, validation, and test-only
+  activities are excluded.
+- Select the first successful deployment environment in `UAT`, `QA`, `TEST`, `INTG`, `SIT`,
+  `DEV`, then other clearly identified non-production order. Production is never eligible.
+- Calculate the estimate from the selected stage start and finish timestamps, not individual task
+  durations, and round up to five-minute intervals. When no valid timing exists, use `Estimated
+  backout time: Not available from the pipeline evidence.`
 - Do not include build IDs or numbers, versions, branches, pipelines, commits, artifacts, Azure
   DevOps terminology, stakeholder coordination, risk analysis, or missing-evidence commentary.
 
 ### Risk and Impact Analysis
 
 - State the evidence-supported planned impact and identify the impacted application or service.
+- Use the single highest-ranked application from production deployment, repository, pipeline,
+  solution or package, work-item, change-description, then project evidence. Keep candidate scores
+  and ambiguity in traceability, not in the ServiceNow field.
 - Classify likelihood only as `Probable`, `Possible`, or `Improbable`.
 - Default to `Possible` unless explicit evidence supports another classification.
 - Use `Improbable` only when explicit active redundancy, alternate-region, traffic-protection,
@@ -301,7 +308,8 @@ Bucket 3 field guidance:
 - Describe one concise, application-specific potential impact. Include one brief mitigation or
   backout statement only when supported.
 - Do not include unsupported percentages, worst-case scenarios, data-loss or database-corruption
-  claims, detailed mitigation narratives, or pipeline and artifact commentary.
+  claims, confirmation language, multiple application alternatives, detailed mitigation
+  narratives, or pipeline and artifact commentary.
 
 CLI:
 ```powershell

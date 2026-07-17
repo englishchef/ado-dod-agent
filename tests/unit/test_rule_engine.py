@@ -16,8 +16,7 @@ def _clean_payload() -> dict[str, str]:
         "backout_plan": (
             "1. Stop or pause the production deployment.\n"
             "2. Restore the application to its pre-change state.\n\n"
-            "Estimated backout time: To be confirmed by the implementation team before "
-            "change execution."
+            "Estimated backout time: Not available from the pipeline evidence."
         ),
         "risk_impact_analysis": (
             "Planned impact: No planned service outage is identified.\n\n"

@@ -121,8 +121,55 @@ class UatDeploymentActivityEvidence(EvidenceBaseModel):
 
 class UatDeploymentEvidence(EvidenceBaseModel):
     stage_name: str | None = None
+    selected_environment: str | None = None
+    stage_start_time: datetime | None = None
+    stage_finish_time: datetime | None = None
     activities: list[UatDeploymentActivityEvidence] = Field(default_factory=list)
     total_deployment_duration_seconds: float | None = None
+
+
+class LowerEnvironmentStageCandidateEvidence(EvidenceBaseModel):
+    stage_name: str
+    normalized_environment: str | None = None
+    state: str | None = None
+    result: str | None = None
+    start_time: datetime | None = None
+    finish_time: datetime | None = None
+    duration_seconds: float | None = None
+    deployment_activities: list[str] = Field(default_factory=list)
+    source_ref: str | None = None
+    selected: bool = False
+
+
+class RejectedStageEvidence(EvidenceBaseModel):
+    stage_name: str
+    reason: str
+
+
+class BackoutTimeDerivationEvidence(EvidenceBaseModel):
+    calculation_method: str = "lower_environment_stage_duration"
+    environment_priority: list[str] = Field(default_factory=list)
+    selected_environment: str | None = None
+    selected_stage_name: str | None = None
+    stage_start_time: datetime | None = None
+    stage_finish_time: datetime | None = None
+    source_duration_seconds: float | None = None
+    rounding_rule: str = "round_up_to_nearest_5_minutes"
+    final_estimate_minutes: int | None = None
+    evidence_refs: list[str] = Field(default_factory=list)
+
+
+class ApplicationCandidateScoreEvidence(EvidenceBaseModel):
+    candidate: str
+    score: int
+    sources: list[str] = Field(default_factory=list)
+
+
+class ApplicationResolutionEvidence(EvidenceBaseModel):
+    selected_application: str
+    display_name: str
+    selection_reason: str
+    candidate_scores: list[ApplicationCandidateScoreEvidence] = Field(default_factory=list)
 
 
 class ResiliencyEvidence(EvidenceBaseModel):
@@ -178,11 +225,20 @@ class RollbackRiskEvidence(EvidenceBaseModel):
     risk_flags: RiskFlagsEvidence
     risk_signals: list[str] = Field(default_factory=list)
     uat_deployment: UatDeploymentEvidence = Field(default_factory=UatDeploymentEvidence)
+    environment_candidates: list[LowerEnvironmentStageCandidateEvidence] = Field(
+        default_factory=list
+    )
+    rejected_stages: list[RejectedStageEvidence] = Field(default_factory=list)
+    backout_time_derivation: BackoutTimeDerivationEvidence = Field(
+        default_factory=BackoutTimeDerivationEvidence
+    )
     resiliency_evidence: ResiliencyEvidence = Field(default_factory=ResiliencyEvidence)
     application_candidates: list[str] = Field(default_factory=list)
+    application_resolution: ApplicationResolutionEvidence | None = None
     planned_impact_evidence: list[str] = Field(default_factory=list)
     high_risk_evidence: list[str] = Field(default_factory=list)
     failed_or_warning_evidence: list[FailureWarningEvidence] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)
     evidence_gaps: list[str] = Field(default_factory=list)
     evidence_references: list[str] = Field(default_factory=list)
 

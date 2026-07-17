@@ -21,6 +21,37 @@ def _llm_outputs() -> dict[str, object]:
 
 def _evidence_bundle() -> dict[str, object]:
     return {
+        "bucket_3": {
+            "environment_candidates": [
+                {
+                    "stage_name": "Deploy to UAT",
+                    "normalized_environment": "UAT",
+                    "selected": True,
+                }
+            ],
+            "backout_time_derivation": {
+                "calculation_method": "lower_environment_stage_duration",
+                "selected_environment": "UAT",
+                "selected_stage_name": "Deploy to UAT",
+                "source_duration_seconds": 558,
+                "final_estimate_minutes": 10,
+            },
+            "rejected_stages": [
+                {"stage_name": "Production", "reason": "Production stages cannot be used."}
+            ],
+            "uat_deployment": {
+                "activities": [
+                    {"name": "Upgrade Solution AcctShutdownAcctCompromiseASAC"}
+                ]
+            },
+            "application_resolution": {
+                "selected_application": "contact-center-asac",
+                "display_name": "Contact Center ASAC application",
+                "selection_reason": "Repository and deployment evidence matched.",
+                "candidate_scores": [],
+            },
+            "warnings": [],
+        },
         "source_ref_map": {
             "work_item:12345": {
                 "friendly_ref": "work_item:12345",
@@ -84,3 +115,15 @@ def test_traceability_report_serializes_to_json() -> None:
     assert payload["schema_version"] == "1.0"
     assert payload["source_llm_outputs_path"].endswith("llm_outputs.json")
     assert "field_traceability" in payload
+
+
+def test_traceability_report_persists_bucket_3_derivations() -> None:
+    report = build_traceability_report(5, _llm_outputs(), _evidence_bundle())
+
+    assert report.backout_time_derivation is not None
+    assert report.backout_time_derivation["source_duration_seconds"] == 558
+    assert report.environment_candidates[0]["selected"] is True
+    assert report.rejected_stages[0]["stage_name"] == "Production"
+    assert report.deployment_activities_used[0]["name"].startswith("Upgrade Solution")
+    assert report.application_resolution is not None
+    assert report.application_resolution["selected_application"] == "contact-center-asac"

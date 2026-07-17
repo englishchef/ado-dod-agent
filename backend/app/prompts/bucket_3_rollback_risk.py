@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from typing import Any
 
-PROMPT_VERSION = "1.2"
+PROMPT_VERSION = "1.3"
 NON_ABSOLUTE_RISK_WORDING = "No specific risk signals were detected in the collected evidence"
 
 
@@ -52,23 +52,30 @@ Guidance:
 backout_plan field intent:
 - Answer only: What actionable steps reverse the production change, and approximately how long
   will the backout take?
-- Derive reverse steps primarily from uat_deployment.activities because those activities reflect
-  the technical deployment actions observed in UAT.
-- Convert UAT solution or package deployment, configuration changes, dependency changes, service
-  restarts, database or infrastructure deployment, and validation activities into concise reverse
-  actions. Include database or infrastructure steps only when explicitly present.
+- Derive reverse steps only from the valid deployment actions in uat_deployment.activities. This
+  object contains the selected lower environment after applying UAT, QA, Test, INTG, SIT, DEV,
+  then other non-production priority.
+- Treat Apply Solution Upgrade, Upgrade Solution, Import Solution, Deploy Solution or Application,
+  package installation or deployment, Publish Customizations, configuration application,
+  infrastructure or database deployment, and application or service restart as deployment actions.
+- Never derive a reverse step from Get Base Solution Versions, Get Solution Version, artifact
+  handling, checkout, initialization, approval, wait, authentication, discovery, variable or
+  metadata retrieval, test-only activity, validation, health checks, or diagnostics. A task is not
+  a deployment action merely because its name contains "solution".
 - Format the actions as a short numbered list followed by exactly one duration line beginning
   "Estimated backout time:".
-- Base the duration on uat_deployment.total_deployment_duration_seconds and round it to a practical
-  estimate such as approximately 10, 20, 30, or 45 minutes, or approximately 1 hour.
-- If reliable UAT timing is unavailable, use exactly: "Estimated backout time: To be confirmed by
-  the implementation team before change execution." Do not invent an estimated duration.
+- Base the duration only on backout_time_derivation, whose calculation method is the full selected
+  lower-environment deployment-stage duration. Never sum or select individual task durations and
+  never use Production. Use final_estimate_minutes and do not show seconds.
+- If no valid lower-environment stage timing is available, use exactly: "Estimated backout time:
+  Not available from the pipeline evidence." Do not invent an estimated duration.
 - Do not include build IDs, build numbers, version numbers, branch names, pipeline names, artifact
   names, Azure DevOps terminology, source commits, CI/CD details, release package metadata,
   stakeholder coordination, business justification, risk analysis, test-result discussion,
   missing-evidence commentary, or speculative fix-forward steps.
 - Never put statements such as "explicit rollback validation evidence was not available" in
   backout_plan. Missing evidence belongs only in missing_information.
+- Never use "to be confirmed", "confirmation required", or implementation-team review language.
 - Do not claim rollback was tested or rollback validation completed unless evidence proves it.
 
 risk_impact_analysis field intent:
@@ -80,9 +87,10 @@ risk_impact_analysis field intent:
   assumed merely because the change is deployed to production.
 - When evidence does not explicitly identify an outage, degradation, disruption, or downtime, use
   "Planned impact: No planned service outage is identified."
-- Identify a business-readable application or service from application_candidates,
-  impacted_components, or service_context.repository_name. Do not expose an engineering pipeline
-  name. If it cannot be determined, require confirmation without inventing a name.
+- Use application_resolution.display_name as the one impacted application. It is deterministically
+  ranked from production deployment identity, repository, pipeline, solution or package, work-item,
+  change-description, then project evidence. Never return multiple names or alternatives joined by
+  "or", and never ask for confirmation in the ServiceNow field.
 - Use only Probable, Possible, or Improbable for likelihood. Do not use numeric percentages.
 - If evidence does not explicitly support Probable or Improbable, classify likelihood as Possible.
 - Improbable requires explicit evidence of active redundancy, alternate-region support, traffic
@@ -98,6 +106,8 @@ risk_impact_analysis field intent:
   secret failures, database corruption, or complete service failure.
 - A supported mitigation must be one brief statement and must not repeat the full backout plan.
 - Do not include build, artifact, branch, pipeline, commit, or release metadata.
+- Do not use "to be confirmed", "confirmation required", or similar uncertainty language. Keep
+  ambiguity only in warnings, traceability, or missing_information.
 - Do not say no risk, zero risk, or no impact. "{NON_ABSOLUTE_RISK_WORDING}" is non-absolute
   wording, not permission to say that the risk is impossible; say not that the risk is impossible.
 {strategy_guidance}
@@ -120,7 +130,7 @@ Evidence:
 def _strategy_guidance(strategy: str) -> str:
     if strategy == "bucket_3_conservative_rollback":
         return """Strategy-specific guidance:
-- Use UAT deployment activities for reverse steps when present.
+- Use the selected lower-environment deployment activities for reverse steps when present.
 - If explicit reversal detail is absent, keep the plan operational and conservative without
   inserting build, artifact, version, pipeline, or missing-evidence commentary.
 - Put missing rollback evidence only in missing_information.

@@ -8,7 +8,10 @@ from backend.app.services.formatting.servicenow_formatter import (
     SERVICE_NOW_FIELD_NAMES,
     format_service_now_payload,
 )
-from backend.app.services.validation.output_repair import repair_bucket_3_fields
+from backend.app.services.validation.output_repair import (
+    expected_backout_duration_statement,
+    repair_bucket_3_fields,
+)
 from backend.app.services.validation.output_validator import validate_bucket_3_fields
 
 
@@ -25,7 +28,15 @@ def _evidence(
 ) -> dict[str, Any]:
     if activities is None:
         activities = [
-            {"name": "Deploy solution package", "duration_seconds": 480},
+            {"name": "Get Base Solution Versions", "duration_seconds": 30},
+            {
+                "name": "Upgrade Solution AcctShutdownAcctCompromiseASAC",
+                "duration_seconds": 480,
+            },
+            {
+                "name": "Apply Solution Upgrade AcctShutdownAcctCompromiseASAC",
+                "duration_seconds": 180,
+            },
             {"name": "Update environment configuration", "duration_seconds": 180},
             {"name": "Validate application health", "duration_seconds": 240},
         ]
@@ -34,9 +45,45 @@ def _evidence(
             "service_context": {"repository_name": repository_name},
             "uat_deployment": {
                 "stage_name": "UAT",
+                "selected_environment": "UAT" if duration_seconds is not None else None,
                 "activities": activities,
                 "total_deployment_duration_seconds": duration_seconds,
             },
+            "backout_time_derivation": {
+                "calculation_method": "lower_environment_stage_duration",
+                "environment_priority": ["UAT", "QA", "TEST", "INTG", "SIT", "DEV"],
+                "selected_environment": "UAT" if duration_seconds is not None else None,
+                "selected_stage_name": "Deploy to UAT" if duration_seconds is not None else None,
+                "stage_start_time": "2026-07-10T14:10:00Z"
+                if duration_seconds is not None
+                else None,
+                "stage_finish_time": "2026-07-10T14:25:00Z"
+                if duration_seconds is not None
+                else None,
+                "source_duration_seconds": duration_seconds,
+                "rounding_rule": "round_up_to_nearest_5_minutes",
+                "final_estimate_minutes": 15 if duration_seconds is not None else None,
+            },
+            "environment_candidates": (
+                [
+                    {
+                        "stage_name": "Deploy to UAT",
+                        "normalized_environment": "UAT",
+                        "state": "completed",
+                        "result": "succeeded",
+                        "start_time": "2026-07-10T14:10:00Z",
+                        "finish_time": "2026-07-10T14:25:00Z",
+                        "duration_seconds": duration_seconds,
+                        "deployment_activities": [
+                            "Upgrade Solution AcctShutdownAcctCompromiseASAC",
+                            "Apply Solution Upgrade AcctShutdownAcctCompromiseASAC",
+                        ],
+                        "selected": True,
+                    }
+                ]
+                if duration_seconds is not None
+                else []
+            ),
             "resiliency_evidence": resiliency or {},
             "planned_impact_evidence": planned_impact or [],
             "high_risk_evidence": high_risk or [],
@@ -45,6 +92,18 @@ def _evidence(
                 if application_candidates is None
                 else application_candidates
             ),
+            "application_resolution": {
+                "selected_application": "contact-center-asac",
+                "display_name": "Contact Center ASAC application",
+                "selection_reason": "Repository and deployment evidence matched.",
+                "candidate_scores": [
+                    {
+                        "candidate": "contact-center-asac",
+                        "score": 100,
+                        "sources": ["repository", "pipeline", "uat_deployment"],
+                    }
+                ],
+            },
             "rollback_indicators": ["UAT deployment activities"],
             "risk_flags": risk_flags or {},
             "risk_signals": [],
@@ -78,8 +137,10 @@ def test_backout_uses_uat_solution_and_configuration_reverse_steps() -> None:
     backout = str(_repair(_evidence())["backout_plan"])
 
     assert "Redeploy the previously validated solution" in backout
+    assert "Apply the prior solution state" in backout
     assert "Restore the prior application configuration" in backout
-    assert "Validate the impacted application" in backout
+    assert "Validate that the Contact Center ASAC application" in backout
+    assert "Get Base Solution Versions" not in backout
     assert "pipeline" not in backout.lower()
     assert "build" not in backout.lower()
     assert "artifact" not in backout.lower()
@@ -88,17 +149,85 @@ def test_backout_uses_uat_solution_and_configuration_reverse_steps() -> None:
 def test_backout_rounds_observed_uat_duration_to_practical_estimate() -> None:
     backout = str(_repair(_evidence(duration_seconds=900))["backout_plan"])
 
-    assert "Estimated backout time: approximately 20 minutes." in backout
+    assert "Estimated backout time: approximately 15 minutes." in backout
 
 
-def test_backout_without_uat_timing_requires_confirmation() -> None:
+def test_backout_without_lower_environment_timing_uses_unavailable_fallback() -> None:
     backout = str(_repair(_evidence(duration_seconds=None))["backout_plan"])
 
-    assert (
-        "Estimated backout time: To be confirmed by the implementation team before change "
-        "execution."
-    ) in backout
+    assert "Estimated backout time: Not available from the pipeline evidence." in backout
+    assert "confirm" not in backout.lower()
     assert "approximately 20 minutes" not in backout
+
+
+def test_missing_lower_environment_stage_timing_is_flagged() -> None:
+    evidence = _evidence(duration_seconds=None)
+    evidence["bucket_3"]["warnings"] = [
+        "BACKOUT_DURATION_LOWER_ENVIRONMENT_NOT_FOUND",
+        "BACKOUT_DURATION_STAGE_TIMING_MISSING",
+    ]
+    backout = str(_repair(evidence)["backout_plan"])
+
+    issues = validate_bucket_3_fields(
+        {"backout_plan": backout, "risk_impact_analysis": _risk_text("Possible")},
+        evidence,
+        "bucket_3",
+    )
+
+    codes = {issue.code for issue in issues}
+    assert "BACKOUT_DURATION_LOWER_ENVIRONMENT_NOT_FOUND" in codes
+    assert "BACKOUT_DURATION_STAGE_TIMING_MISSING" in codes
+    assert "BACKOUT_PLAN_DELIVERY_METADATA_LEAKAGE" not in codes
+
+
+def test_backout_duration_rounds_up_to_five_minute_intervals() -> None:
+    cases = {
+        60: "approximately 5 minutes",
+        301: "approximately 10 minutes",
+        601: "approximately 15 minutes",
+        901: "approximately 20 minutes",
+        3600: "approximately 1 hour",
+        3661: "approximately 1 hour 5 minutes",
+    }
+    for duration, expected in cases.items():
+        evidence = {
+            "bucket_3": {
+                "uat_deployment": {"total_deployment_duration_seconds": duration}
+            }
+        }
+        assert expected in expected_backout_duration_statement(evidence)
+
+
+def test_task_level_duration_is_flagged_and_repaired_to_stage_estimate_only() -> None:
+    evidence = _evidence()
+    evidence["bucket_3"]["backout_time_derivation"]["calculation_method"] = (
+        "sum_task_activity_durations"
+    )
+    generated = (
+        "1. Stop the deployment.\n"
+        "2. Restore the prior solution.\n"
+        "3. Validate the application.\n\n"
+        "Estimated backout time: approximately 5 minutes."
+    )
+
+    issues = validate_bucket_3_fields(
+        {"backout_plan": generated, "risk_impact_analysis": _risk_text("Possible")},
+        evidence,
+        "bucket_3",
+    )
+    repaired, _ = repair_bucket_3_fields(
+        {"backout_plan": generated, "risk_impact_analysis": _risk_text("Possible")},
+        evidence,
+        fields_to_repair={"backout_plan"},
+    )
+
+    codes = {issue.code for issue in issues}
+    assert "BACKOUT_DURATION_TASK_LEVEL_CALCULATION_USED" in codes
+    assert "BACKOUT_DURATION_WRONG_STAGE_TYPE" in codes
+    assert str(repaired["backout_plan"]).startswith("1. Stop the deployment.")
+    assert "Estimated backout time: approximately 15 minutes." in str(
+        repaired["backout_plan"]
+    )
 
 
 def test_backout_metadata_is_flagged_and_removed_by_repair() -> None:
@@ -276,6 +405,40 @@ def test_repository_name_becomes_business_readable_application_name() -> None:
     )
 
     assert "Impacted application: Contact Center ASAC application." in risk
+
+
+def test_ambiguous_application_and_confirmation_language_are_flagged_and_repaired() -> None:
+    ambiguous = _risk_text("Possible").replace(
+        "Contact Center ASAC application",
+        "Bill Pay Service, Enable service, or contact-center-asac (to be confirmed)",
+    )
+
+    issues = validate_bucket_3_fields(
+        {
+            "backout_plan": str(_repair(_evidence())["backout_plan"]),
+            "risk_impact_analysis": ambiguous,
+        },
+        _evidence(),
+        "bucket_3",
+    )
+    repaired, _ = repair_bucket_3_fields(
+        {
+            "backout_plan": str(_repair(_evidence())["backout_plan"]),
+            "risk_impact_analysis": ambiguous,
+        },
+        _evidence(),
+        fields_to_repair={"risk_impact_analysis"},
+    )
+
+    codes = {issue.code for issue in issues}
+    assert "IMPACT_APPLICATION_CONFIRMATION_LANGUAGE" in codes
+    assert "IMPACT_APPLICATION_MULTIPLE_ALTERNATIVES" in codes
+    assert "IMPACT_APPLICATION_AMBIGUOUS" in codes
+    assert "IMPACT_APPLICATION_WEAK_EVIDENCE_SELECTED" in codes
+    repaired_risk = str(repaired["risk_impact_analysis"])
+    assert "Impacted application: Contact Center ASAC application." in repaired_risk
+    assert "to be confirmed" not in repaired_risk.lower()
+    assert "Bill Pay" not in repaired_risk
 
 
 def test_unsupported_data_loss_claim_is_flagged_and_removed() -> None:

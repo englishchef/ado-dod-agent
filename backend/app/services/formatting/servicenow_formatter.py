@@ -96,6 +96,7 @@ def build_traceability_report(
     """Build field-level traceability from LLM evidence refs and evidence source maps."""
 
     source_ref_map = _safe_dict(evidence_bundle.get("source_ref_map"))
+    bucket_3_evidence = _safe_dict(evidence_bundle.get("bucket_3"))
     field_traceability: dict[str, FieldTraceability] = {}
     warnings: list[str] = []
     if not source_ref_map:
@@ -131,8 +132,19 @@ def build_traceability_report(
         source_llm_outputs_path=source_llm_outputs_path,
         source_evidence_bundle_path=source_evidence_bundle_path,
         field_traceability=field_traceability,
+        environment_candidates=_dict_list(bucket_3_evidence.get("environment_candidates")),
+        backout_time_derivation=_optional_dict(
+            bucket_3_evidence.get("backout_time_derivation")
+        ),
+        rejected_stages=_dict_list(bucket_3_evidence.get("rejected_stages")),
+        deployment_activities_used=_dict_list(
+            _safe_dict(bucket_3_evidence.get("uat_deployment")).get("activities")
+        ),
+        application_resolution=_optional_dict(
+            bucket_3_evidence.get("application_resolution")
+        ),
         source_ref_map=source_ref_map,
-        warnings=warnings,
+        warnings=[*warnings, *_string_list(bucket_3_evidence.get("warnings"))],
     )
 
 
@@ -159,6 +171,16 @@ def _remove_field_label(value: str) -> str:
 
 def _safe_dict(value: Any) -> dict[str, Any]:
     return value if isinstance(value, dict) else {}
+
+
+def _optional_dict(value: Any) -> dict[str, Any] | None:
+    return value if isinstance(value, dict) else None
+
+
+def _dict_list(value: Any) -> list[dict[str, Any]]:
+    if not isinstance(value, list):
+        return []
+    return [item for item in value if isinstance(item, dict)]
 
 
 def _string_list(value: Any) -> list[str]:

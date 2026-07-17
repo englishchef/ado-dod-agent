@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from backend.app.models.rules import RuleResult, TestCompletenessScore
+from backend.app.services.validation.output_validator import validate_bucket_3_fields
 
 _DB_TERMS = ("data", "schema", "database", "migration", "sql", "persistence", "rollback")
 _INFRA_TERMS = (
@@ -102,6 +103,25 @@ def evaluate_risk_rules(
                     "High risk routing is paired with weak validation or confidence.",
                 )
             )
+    existing_rule_ids = {rule.rule_id for rule in rules}
+    for issue in validate_bucket_3_fields(service_now_payload, evidence_bundle):
+        if issue.field != "risk_impact_analysis" or issue.code in existing_rule_ids:
+            continue
+        rules.append(
+            _rule(
+                issue.code,
+                "review"
+                if issue.code
+                in {
+                    "IMPROBABLE_WITHOUT_RESILIENCY_EVIDENCE",
+                    "PROBABLE_WITHOUT_HIGH_RISK_EVIDENCE",
+                    "RISK_IMPACT_SPECULATIVE",
+                }
+                else "warning",
+                issue.message,
+            )
+        )
+        existing_rule_ids.add(issue.code)
     return rules
 
 

@@ -155,6 +155,24 @@ def test_bucket_3_prompt_avoids_absolute_no_risk_language() -> None:
     assert "not that the risk is impossible" in prompt
 
 
+def test_bucket_3_prompt_enforces_uat_first_backout_and_evidence_likelihood() -> None:
+    prompt = bucket_3_rollback_risk.build_prompt(
+        {
+            "uat_deployment": {"activities": []},
+            "resiliency_evidence": {},
+        }
+    )
+
+    assert "Derive reverse steps primarily from uat_deployment.activities" in prompt
+    assert "Estimated backout time:" in prompt
+    assert "Do not invent an estimated duration" in prompt
+    assert "No planned outage or degradation should be" in prompt
+    assert "classify likelihood as Possible" in prompt
+    assert "Improbable requires explicit evidence" in prompt
+    assert "Probable requires explicit evidence" in prompt
+    assert "Do not use numeric percentages" in prompt
+
+
 def test_all_prompts_require_json_only_output() -> None:
     for prompt in _all_prompts():
         assert "Return valid JSON only" in prompt

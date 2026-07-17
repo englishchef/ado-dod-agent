@@ -5,19 +5,29 @@ from __future__ import annotations
 from typing import Any
 
 from backend.app.models.rules import RuleResult
+from backend.app.services.validation.output_validator import validate_bucket_3_fields
 
 _ROLLBACK_ANCHORS = (
-    "artifact",
-    "build",
-    "source version",
     "previous version",
     "previous known-good",
+    "previously validated",
     "known-good",
-    "rollback pipeline",
+    "pre-change state",
+    "prior state",
     "redeploy",
     "revert",
+    "restore",
 )
-_REVERSAL_TERMS = ("redeploy previous", "rollback", "revert", "disable feature", "restore prior")
+_REVERSAL_TERMS = (
+    "redeploy the previous",
+    "redeploy the previously",
+    "rollback",
+    "revert",
+    "disable feature",
+    "restore prior",
+    "restore the prior",
+    "pre-change state",
+)
 _DB_BACKOUT_TERMS = (
     "db rollback",
     "database rollback",
@@ -100,6 +110,25 @@ def evaluate_backout_rules(
                 "backout_plan",
             )
         )
+    existing_rule_ids = {rule.rule_id for rule in rules}
+    for issue in validate_bucket_3_fields(service_now_payload, evidence_bundle):
+        if issue.field != "backout_plan" or issue.code in existing_rule_ids:
+            continue
+        rules.append(
+            _rule(
+                issue.code,
+                "review"
+                if issue.code
+                in {
+                    "BACKOUT_PLAN_DELIVERY_METADATA_LEAKAGE",
+                    "BACKOUT_DURATION_UNSUPPORTED",
+                }
+                else "warning",
+                issue.message,
+                "backout_plan",
+            )
+        )
+        existing_rule_ids.add(issue.code)
     return rules
 
 

@@ -13,8 +13,18 @@ def _clean_payload() -> dict[str, str]:
         "testing_performed": "Automated tests passed: 10 total, 10 passed.",
         "implementation_plan": "Deploy through the approved release pipeline.",
         "validation_plan": "Validate API health and review monitoring logs.",
-        "backout_plan": "Rollback by redeploying the previous known-good build if needed.",
-        "risk_impact_analysis": "No specific risk signals were detected.",
+        "backout_plan": (
+            "1. Stop or pause the production deployment.\n"
+            "2. Restore the application to its pre-change state.\n\n"
+            "Estimated backout time: To be confirmed by the implementation team before "
+            "change execution."
+        ),
+        "risk_impact_analysis": (
+            "Planned impact: No planned service outage is identified.\n\n"
+            "Impacted application: Contact Center ASAC application.\n\n"
+            "Likelihood of unplanned impact: Possible.\n\n"
+            "Potential impact: The application may experience temporary functional degradation."
+        ),
     }
 
 

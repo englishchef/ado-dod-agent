@@ -43,3 +43,21 @@ def test_config_risk_flag_without_config_mention_triggers_rule() -> None:
     )
 
     assert "CONFIG_RISK_MISSING" in {rule.rule_id for rule in rules}
+
+
+def test_unsupported_improbable_likelihood_flows_into_rule_evaluation() -> None:
+    rules = evaluate_risk_rules(
+        {
+            "risk_impact_analysis": (
+                "Planned impact: No planned service outage is identified.\n\n"
+                "Impacted application: Contact Center ASAC application.\n\n"
+                "Likelihood of unplanned impact: Improbable.\n\n"
+                "Potential impact: Temporary functional degradation is possible."
+            )
+        },
+        {"bucket_3": {"resiliency_evidence": {}}},
+    )
+
+    assert "IMPROBABLE_WITHOUT_RESILIENCY_EVIDENCE" in {
+        rule.rule_id for rule in rules
+    }

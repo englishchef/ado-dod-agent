@@ -112,6 +112,28 @@ class RiskFlagsEvidence(EvidenceBaseModel):
     feature_flag_change_detected: bool = False
 
 
+class UatDeploymentActivityEvidence(EvidenceBaseModel):
+    name: str
+    status: str | None = None
+    duration_seconds: float | None = None
+    source_ref: str | None = None
+
+
+class UatDeploymentEvidence(EvidenceBaseModel):
+    stage_name: str | None = None
+    activities: list[UatDeploymentActivityEvidence] = Field(default_factory=list)
+    total_deployment_duration_seconds: float | None = None
+
+
+class ResiliencyEvidence(EvidenceBaseModel):
+    active_active: bool = False
+    alternate_region: str | None = None
+    rolling_deployment: bool = False
+    traffic_shift: bool = False
+    passive_instance_available: bool = False
+    evidence_refs: list[str] = Field(default_factory=list)
+
+
 class FailureWarningEvidence(EvidenceBaseModel):
     source_type: str
     name: str | None = None
@@ -155,6 +177,11 @@ class RollbackRiskEvidence(EvidenceBaseModel):
     impacted_components: list[str] = Field(default_factory=list)
     risk_flags: RiskFlagsEvidence
     risk_signals: list[str] = Field(default_factory=list)
+    uat_deployment: UatDeploymentEvidence = Field(default_factory=UatDeploymentEvidence)
+    resiliency_evidence: ResiliencyEvidence = Field(default_factory=ResiliencyEvidence)
+    application_candidates: list[str] = Field(default_factory=list)
+    planned_impact_evidence: list[str] = Field(default_factory=list)
+    high_risk_evidence: list[str] = Field(default_factory=list)
     failed_or_warning_evidence: list[FailureWarningEvidence] = Field(default_factory=list)
     evidence_gaps: list[str] = Field(default_factory=list)
     evidence_references: list[str] = Field(default_factory=list)

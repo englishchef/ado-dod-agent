@@ -27,3 +27,15 @@ def test_infra_change_without_infra_backout_triggers_rule() -> None:
     )
 
     assert "INFRA_CHANGE_NO_INFRA_BACKOUT" in {rule.rule_id for rule in rules}
+
+
+def test_backout_refinement_validation_codes_flow_into_rule_evaluation() -> None:
+    rules = evaluate_backout_rules(
+        {"backout_plan": "Redeploy build 123 from the release pipeline."},
+        {"bucket_3": {"uat_deployment": {"activities": []}}},
+    )
+    rule_ids = {rule.rule_id for rule in rules}
+
+    assert "BACKOUT_PLAN_DELIVERY_METADATA_LEAKAGE" in rule_ids
+    assert "BACKOUT_PLAN_MISSING_STEPS" in rule_ids
+    assert "BACKOUT_PLAN_MISSING_DURATION" in rule_ids

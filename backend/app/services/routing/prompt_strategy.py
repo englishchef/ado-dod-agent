@@ -42,20 +42,20 @@ def select_prompt_strategy(
             reasons.append("Bucket 2 has no collected test results.")
 
     bucket_3 = _as_dict(evidence_bundle.get("bucket_3"))
-    artifacts = _as_list(bucket_3.get("artifact_evidence"))
-    rollback_indicators = _as_list(bucket_3.get("rollback_indicators"))
+    uat_deployment = _as_dict(bucket_3.get("uat_deployment"))
+    uat_activities = _as_list(uat_deployment.get("activities"))
     if risk_tier.risk_tier == "high":
         bucket_3_strategy = "bucket_3_high_risk"
         reasons.append("Risk tier is high, so high-risk rollback/risk wording is required.")
-    elif not artifacts or not rollback_indicators:
+    elif not uat_activities:
         bucket_3_strategy = "bucket_3_conservative_rollback"
         reasons.append(
-            "Rollback or artifact evidence is missing, so conservative rollback wording "
+            "UAT deployment activity evidence is missing, so conservative rollback wording "
             "is required."
         )
     else:
         bucket_3_strategy = "bucket_3_standard"
-        reasons.append("Bucket 3 evidence supports the standard rollback/risk prompt.")
+        reasons.append("UAT deployment activity evidence supports the standard Bucket 3 prompt.")
 
     return PromptStrategySelection(
         bucket_1_strategy=bucket_1_strategy,

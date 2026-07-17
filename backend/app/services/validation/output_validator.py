@@ -15,7 +15,13 @@ from backend.app.models.validated_outputs import (
     ValidationIssue,
 )
 from backend.app.services.validation.output_repair import (
+    bucket_3_claim_evidence_text,
+    detect_backout_delivery_metadata_leakage,
     detect_delivery_detail_leakage,
+    expected_backout_duration_statement,
+    has_explicit_planned_impact_evidence,
+    has_high_risk_evidence,
+    has_resiliency_evidence,
     longest_contiguous_word_overlap,
     normalized_words,
     sequence_similarity,
@@ -45,6 +51,29 @@ _RATIONALE_RE = re.compile(
     r"\b(?:because|benefit|compliance|correctness|efficiency|ensure|necessary|prevent|"
     r"reduce|reliability|required|risk|supportability)\b|user experience|"
     r"operational consistency",
+    re.IGNORECASE,
+)
+_BACKOUT_STEP_RE = re.compile(r"(?m)^\s*(?:\d+[.)]|[-*])\s+\S+")
+_BACKOUT_DURATION_RE = re.compile(r"(?im)^\s*Estimated backout time\s*:\s*.+$")
+_LIKELIHOOD_RE = re.compile(
+    r"Likelihood of unplanned impact\s*:\s*([A-Za-z]+)",
+    re.IGNORECASE,
+)
+_ALLOWED_LIKELIHOODS = {"probable", "possible", "improbable"}
+_UNSUPPORTED_RISK_CLAIMS = (
+    "worst-case scenario",
+    "data loss",
+    "database corruption",
+    "regional failover",
+    "complete service failure",
+    "authentication failure",
+    "secret retrieval failure",
+    "operational disruption to all business processes",
+    "production instability",
+)
+_RISK_DELIVERY_METADATA_RE = re.compile(
+    r"\b(?:artifact|branch|build(?:\s+(?:id|number))?|commit|pipeline|version\s+\d)\b|"
+    r"\bAzure\s+DevOps\b|\bCI\s*/\s*CD\b",
     re.IGNORECASE,
 )
 
@@ -94,6 +123,8 @@ def validate_llm_outputs(
         issues.extend(_unsupported_claim_issues(bucket_name, bucket_payload, evidence))
         if bucket_name == "bucket_1":
             issues.extend(validate_change_intent_field_separation(bucket_payload, bucket_name))
+        if bucket_name == "bucket_3":
+            issues.extend(validate_bucket_3_fields(bucket_payload, evidence, bucket_name))
         issues.extend(_missing_context_issues(bucket_name, evidence))
         results.append(
             BucketValidationResult(
@@ -210,6 +241,206 @@ def validate_change_intent_field_separation(
     return issues
 
 
+def validate_bucket_3_fields(
+    payload: ServiceNowPayload | dict[str, Any],
+    evidence_bundle: dict[str, Any] | None = None,
+    bucket: str | None = None,
+) -> list[ValidationIssue]:
+    """Validate concise, evidence-grounded backout and risk field intent."""
+
+    payload_dict = payload.model_dump() if isinstance(payload, ServiceNowPayload) else payload
+    evidence = evidence_bundle or {}
+    issues: list[ValidationIssue] = []
+    backout = payload_dict.get("backout_plan")
+    if isinstance(backout, str) and backout.strip():
+        if detect_backout_delivery_metadata_leakage(backout):
+            issues.append(
+                _issue(
+                    "warning",
+                    "BACKOUT_PLAN_DELIVERY_METADATA_LEAKAGE",
+                    "Backout plan contains build, version, branch, pipeline, artifact, or "
+                    "delivery metadata.",
+                    "backout_plan",
+                    bucket,
+                )
+            )
+        if len(_BACKOUT_STEP_RE.findall(backout)) < 2:
+            issues.append(
+                _issue(
+                    "warning",
+                    "BACKOUT_PLAN_MISSING_STEPS",
+                    "Backout plan must contain ordered or clearly separated operational steps.",
+                    "backout_plan",
+                    bucket,
+                )
+            )
+        if len(normalized_words(backout)) > 120:
+            issues.append(
+                _issue(
+                    "warning",
+                    "BACKOUT_PLAN_TOO_VERBOSE",
+                    "Backout plan contains explanatory narrative beyond the rollback actions.",
+                    "backout_plan",
+                    bucket,
+                )
+            )
+        duration_match = _BACKOUT_DURATION_RE.search(backout)
+        if duration_match is None:
+            issues.append(
+                _issue(
+                    "warning",
+                    "BACKOUT_PLAN_MISSING_DURATION",
+                    "Backout plan must include an estimated backout time.",
+                    "backout_plan",
+                    bucket,
+                )
+            )
+        else:
+            expected_duration = expected_backout_duration_statement(evidence)
+            if duration_match.group(0).strip().casefold() != expected_duration.casefold():
+                issues.append(
+                    _issue(
+                        "warning",
+                        "BACKOUT_DURATION_UNSUPPORTED",
+                        "Backout duration does not match the rounded UAT timing evidence or "
+                        "confirmation fallback.",
+                        "backout_plan",
+                        bucket,
+                    )
+                )
+
+    risk = payload_dict.get("risk_impact_analysis")
+    if not isinstance(risk, str) or not risk.strip():
+        return issues
+    if len(normalized_words(risk)) > 140:
+        issues.append(
+            _issue(
+                "warning",
+                "RISK_IMPACT_TOO_VERBOSE",
+                "Risk and impact analysis should remain within approximately 60-140 words.",
+                "risk_impact_analysis",
+                bucket,
+            )
+        )
+    if not re.search(r"\bPlanned impact\s*:\s*\S+", risk, re.IGNORECASE):
+        issues.append(
+            _issue(
+                "warning",
+                "RISK_IMPACT_MISSING_PLANNED_IMPACT",
+                "Risk and impact analysis must state the evidence-supported planned impact.",
+                "risk_impact_analysis",
+                bucket,
+            )
+        )
+    if not re.search(r"\bImpacted (?:application|service)\s*:\s*\S+", risk, re.IGNORECASE):
+        issues.append(
+            _issue(
+                "warning",
+                "RISK_IMPACT_MISSING_APPLICATION",
+                "Risk and impact analysis must identify the impacted application or service.",
+                "risk_impact_analysis",
+                bucket,
+            )
+        )
+    likelihood_match = _LIKELIHOOD_RE.search(risk)
+    if likelihood_match is None:
+        issues.append(
+            _issue(
+                "warning",
+                "RISK_IMPACT_MISSING_LIKELIHOOD",
+                "Risk and impact analysis must classify likelihood as Probable, Possible, or "
+                "Improbable.",
+                "risk_impact_analysis",
+                bucket,
+            )
+        )
+    else:
+        likelihood = likelihood_match.group(1).lower()
+        if likelihood not in _ALLOWED_LIKELIHOODS:
+            issues.append(
+                _issue(
+                    "warning",
+                    "RISK_LIKELIHOOD_UNSUPPORTED",
+                    "Likelihood must be Probable, Possible, or Improbable.",
+                    "risk_impact_analysis",
+                    bucket,
+                )
+            )
+        elif likelihood == "improbable" and not has_resiliency_evidence(evidence):
+            issues.append(
+                _issue(
+                    "warning",
+                    "IMPROBABLE_WITHOUT_RESILIENCY_EVIDENCE",
+                    "Improbable requires explicit resiliency or traffic-protection evidence.",
+                    "risk_impact_analysis",
+                    bucket,
+                )
+            )
+        elif likelihood == "probable" and not has_high_risk_evidence(evidence):
+            issues.append(
+                _issue(
+                    "warning",
+                    "PROBABLE_WITHOUT_HIGH_RISK_EVIDENCE",
+                    "Probable requires explicit recurring-failure, incident, instability, "
+                    "failed-validation, or high-risk evidence.",
+                    "risk_impact_analysis",
+                    bucket,
+                )
+            )
+    if re.search(r"\b\d+(?:\.\d+)?\s*%", risk):
+        issues.append(
+            _issue(
+                "warning",
+                "RISK_LIKELIHOOD_UNSUPPORTED",
+                "Numeric likelihood percentages are not supported by the ServiceNow field "
+                "contract.",
+                "risk_impact_analysis",
+                bucket,
+            )
+        )
+    evidence_text = bucket_3_claim_evidence_text(evidence).lower()
+    unsupported_claims = [
+        claim
+        for claim in _UNSUPPORTED_RISK_CLAIMS
+        if claim in risk.lower() and claim not in evidence_text
+    ]
+    if _RISK_DELIVERY_METADATA_RE.search(risk):
+        unsupported_claims.append("delivery metadata")
+    planned_match = re.search(r"\bPlanned impact\s*:\s*([^\n]+)", risk, re.IGNORECASE)
+    if planned_match is not None:
+        planned_text = planned_match.group(1).lower()
+        negative_planned_impact = re.search(
+            r"\b(?:no|without)\s+(?:planned\s+)?(?:service\s+)?"
+            r"(?:outage|downtime|impact|degradation|disruption)\b",
+            planned_text,
+        )
+        positive_planned_impact = re.search(
+            r"\b(?:outage|downtime|unavailable|degradation|disruption|"
+            r"intermittent access)\b",
+            planned_text,
+        )
+        if (
+            positive_planned_impact
+            and not negative_planned_impact
+            and not has_explicit_planned_impact_evidence(evidence)
+        ):
+            unsupported_claims.append("planned outage or degradation")
+    if unsupported_claims:
+        unsupported_claims = list(dict.fromkeys(unsupported_claims))
+        issues.append(
+            _issue(
+                "warning",
+                "RISK_IMPACT_SPECULATIVE",
+                "Risk and impact analysis contains unsupported speculative impact claims: "
+                + ", ".join(unsupported_claims)
+                + ".",
+                "risk_impact_analysis",
+                bucket,
+            )
+        )
+    return issues
+
+
 def validate_service_now_payload(
     payload: ServiceNowPayload | dict[str, Any],
     evidence_bundle: dict[str, Any] | None = None,
@@ -239,6 +470,7 @@ def validate_service_now_payload(
     )
     issues.extend(validate_no_raw_reference_leakage(payload_dict))
     issues.extend(validate_change_intent_field_separation(payload_dict))
+    issues.extend(validate_bucket_3_fields(payload_dict, evidence))
     joined_payload = " ".join(str(value) for value in payload_dict.values())
     issues.extend(_risk_claim_issues(joined_payload, None, "risk_impact_analysis"))
     if _tests_missing(evidence):

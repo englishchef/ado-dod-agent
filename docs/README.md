@@ -267,13 +267,41 @@ Field-purpose separation:
 | `justification` | Why the change is necessary and what supported business or technical value it provides. |
 | `testing_performed` | How the change was tested, based on available test evidence. |
 | `implementation_plan` | How the change will be deployed. |
-| `backout_plan` | How the change will be reversed if needed. |
+| `backout_plan` | The operational steps required to reverse the change and the approximate backout duration. |
+| `risk_impact_analysis` | The planned impact, impacted application or service, likelihood of unplanned impact, concise potential impact, and supported mitigation. |
 
 `change_description` and `justification` must translate source evidence into business-readable
 production-change language. Build numbers, branch and pipeline names, artifacts, commit details,
 CI/CD mechanics, deployment steps, raw evidence references, and internal evidence keys do not
 belong in either field. Delivery evidence remains available for grounding and traceability without
 being exposed in these ServiceNow values.
+
+Bucket 3 field guidance:
+
+### Backout Plan
+
+- List only the operational steps required to reverse the change.
+- Derive the steps primarily from normalized UAT deployment activities.
+- Include an approximate backout duration based on observed UAT deployment timing. When reliable
+  timing is unavailable, state that the implementation team must confirm the duration before
+  change execution; do not fabricate an estimate.
+- Do not include build IDs or numbers, versions, branches, pipelines, commits, artifacts, Azure
+  DevOps terminology, stakeholder coordination, risk analysis, or missing-evidence commentary.
+
+### Risk and Impact Analysis
+
+- State the evidence-supported planned impact and identify the impacted application or service.
+- Classify likelihood only as `Probable`, `Possible`, or `Improbable`.
+- Default to `Possible` unless explicit evidence supports another classification.
+- Use `Improbable` only when explicit active redundancy, alternate-region, traffic-protection,
+  rolling-deployment, passive-instance, or equivalent resiliency evidence exists.
+- Use `Probable` only when explicit recurring deployment failure, repeated incident, unresolved
+  critical defect, failed deployment validation, production instability, or high-risk evidence
+  exists.
+- Describe one concise, application-specific potential impact. Include one brief mitigation or
+  backout statement only when supported.
+- Do not include unsupported percentages, worst-case scenarios, data-loss or database-corruption
+  claims, detailed mitigation narratives, or pipeline and artifact commentary.
 
 CLI:
 ```powershell

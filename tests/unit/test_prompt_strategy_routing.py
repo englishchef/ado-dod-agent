@@ -48,11 +48,27 @@ def test_high_risk_selects_high_risk_bucket_3_strategy() -> None:
     assert result.bucket_3_strategy == "bucket_3_high_risk"
 
 
-def test_missing_artifact_selects_conservative_rollback() -> None:
+def test_missing_uat_activity_selects_conservative_rollback() -> None:
     result = select_prompt_strategy(
         _quality(),
         _risk("medium"),
-        {"bucket_3": {"rollback_indicators": ["abc"], "artifact_evidence": []}},
+        {"bucket_3": {"uat_deployment": {"activities": []}}},
     )
 
     assert result.bucket_3_strategy == "bucket_3_conservative_rollback"
+
+
+def test_uat_activity_evidence_selects_standard_bucket_3_strategy() -> None:
+    result = select_prompt_strategy(
+        _quality(),
+        _risk("medium"),
+        {
+            "bucket_3": {
+                "uat_deployment": {
+                    "activities": [{"name": "Deploy solution package"}],
+                }
+            }
+        },
+    )
+
+    assert result.bucket_3_strategy == "bucket_3_standard"

@@ -22,6 +22,7 @@ from backend.app.services.formatting.servicenow_formatter import (
 )
 from backend.app.services.scoring.confidence import score_confidence
 from backend.app.services.validation.output_repair import (
+    repair_bucket_3_fields,
     repair_change_intent_fields,
     repair_llm_output_shape,
 )
@@ -56,6 +57,21 @@ def validate_and_assemble_outputs(
     if repair_notes:
         assembled_payload = ServiceNowPayload.model_construct(**repaired_fields)
         _mark_bucket_1_repaired(bucket_results, repair_notes)
+    bucket_3_repair_fields = {
+        str(issue.field)
+        for result in bucket_results
+        if result.bucket_name == "bucket_3"
+        for issue in result.issues
+        if issue.field in {"backout_plan", "risk_impact_analysis"}
+    }
+    repaired_fields, repair_notes = repair_bucket_3_fields(
+        assembled_payload.model_dump(),
+        evidence_bundle,
+        fields_to_repair=bucket_3_repair_fields,
+    )
+    if repair_notes:
+        assembled_payload = ServiceNowPayload.model_construct(**repaired_fields)
+        _mark_bucket_3_repaired(bucket_results, repair_notes)
     try:
         service_now_payload = format_service_now_payload(assembled_payload)
     except ValidationError as exc:
@@ -104,6 +120,20 @@ def _mark_bucket_1_repaired(
 ) -> None:
     for result in bucket_results:
         if result.bucket_name != "bucket_1":
+            continue
+        result.repaired = True
+        result.repair_notes.extend(
+            note for note in repair_notes if note not in result.repair_notes
+        )
+        return
+
+
+def _mark_bucket_3_repaired(
+    bucket_results: list[BucketValidationResult],
+    repair_notes: list[str],
+) -> None:
+    for result in bucket_results:
+        if result.bucket_name != "bucket_3":
             continue
         result.repaired = True
         result.repair_notes.extend(

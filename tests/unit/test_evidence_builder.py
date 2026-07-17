@@ -290,6 +290,73 @@ def test_bucket_3_includes_artifacts_rollback_flags_and_signals() -> None:
     assert bucket.risk_signals
 
 
+def test_bucket_3_normalizes_uat_deployment_timing_and_resiliency_evidence() -> None:
+    canonical = _complete_canonical()
+    canonical.execution_context.stages = [
+        CanonicalStage(
+            id="uat-stage",
+            name="UAT Deployment",
+            result="succeeded",
+            duration_seconds=900,
+        )
+    ]
+    canonical.execution_context.jobs = [
+        CanonicalJob(id="uat-job", parent_id="uat-stage", name="Deploy to UAT")
+    ]
+    canonical.execution_context.tasks = [
+        CanonicalTask(
+            id="solution",
+            parent_id="uat-job",
+            name="Deploy solution package",
+            result="succeeded",
+            duration_seconds=480,
+        ),
+        CanonicalTask(
+            id="config",
+            parent_id="uat-job",
+            name="Update environment configuration",
+            result="succeeded",
+            duration_seconds=180,
+        ),
+        CanonicalTask(
+            id="health",
+            parent_id="uat-job",
+            name="Validate application health",
+            result="succeeded",
+            duration_seconds=240,
+        ),
+    ]
+    canonical.change_context.work_items[0].description = (
+        "Use a rolling deployment while traffic remains on the active secondary region."
+    )
+
+    bucket = build_evidence_bundle(canonical).bucket_3
+
+    assert bucket.uat_deployment.stage_name == "UAT Deployment"
+    assert [activity.name for activity in bucket.uat_deployment.activities] == [
+        "Deploy solution package",
+        "Update environment configuration",
+        "Validate application health",
+    ]
+    assert bucket.uat_deployment.total_deployment_duration_seconds == 900
+    assert bucket.resiliency_evidence.rolling_deployment is True
+    assert bucket.resiliency_evidence.alternate_region is not None
+    assert bucket.resiliency_evidence.traffic_shift is True
+
+
+def test_bucket_3_captures_explicit_planned_outage_and_high_risk_evidence() -> None:
+    canonical = _complete_canonical()
+    canonical.change_context.work_items[0].description = (
+        "Planned outage: Contact Center ASAC application will be unavailable for 15 minutes. "
+        "Known recurring deployment failures make this an explicitly high-risk change."
+    )
+
+    bucket = build_evidence_bundle(canonical).bucket_3
+
+    assert bucket.planned_impact_evidence
+    assert bucket.high_risk_evidence
+
+
 def test_failed_timeline_and_test_evidence_appear_in_bucket_3() -> None:
     bucket = build_evidence_bundle(_complete_canonical()).bucket_3
     source_types = {item.source_type for item in bucket.failed_or_warning_evidence}

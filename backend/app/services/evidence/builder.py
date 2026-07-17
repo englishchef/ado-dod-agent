@@ -30,11 +30,14 @@ from backend.app.models.evidence import (
     FailureWarningEvidence,
     JobEvidence,
     PullRequestEvidence,
+    ResiliencyEvidence,
     RiskFlagsEvidence,
     RollbackRiskEvidence,
     StageEvidence,
     TaskEvidence,
     TestEvidenceSummary,
+    UatDeploymentActivityEvidence,
+    UatDeploymentEvidence,
     WorkItemEvidence,
 )
 from backend.app.services.evidence.reference_normalizer import normalize_source_ref
@@ -60,6 +63,64 @@ _IMPLEMENTATION_HINTS = (
     "environment",
 )
 _DEPLOYMENT_HINTS = ("deploy", "release", "environment", "prod", "stage", "lower")
+_UAT_NAME_RE = re.compile(r"\b(?:uat|user acceptance(?: testing)?)\b", re.IGNORECASE)
+_UAT_ACTIVITY_TERMS = (
+    "deploy",
+    "import",
+    "solution",
+    "package",
+    "configuration",
+    "config",
+    "environment variable",
+    "dependency",
+    "restart",
+    "smoke",
+    "health check",
+    "validate",
+    "validation",
+    "solution checker",
+    "database",
+    "schema",
+    "infrastructure",
+)
+_PLANNED_IMPACT_PATTERNS = (
+    re.compile(
+        r"\b(?:planned|expected)\s+(?:service\s+)?(?:outage|downtime|impact|degradation|"
+        r"disruption)\b",
+        re.IGNORECASE,
+    ),
+    re.compile(r"\bwill be unavailable\b", re.IGNORECASE),
+    re.compile(
+        r"\busers?\s+(?:will|may)\s+experience\b.*\b(?:during deployment|"
+        r"during the deployment|maintenance window)\b",
+        re.IGNORECASE,
+    ),
+    re.compile(
+        r"\b(?:outage|downtime|unavailable|intermittent access)\b.*"
+        r"\b(?:minute|minutes|hour|hours)\b",
+        re.IGNORECASE,
+    ),
+)
+_HIGH_RISK_PATTERNS = (
+    re.compile(r"\b(?:known\s+)?recurring\s+(?:deployment\s+)?failures?\b", re.IGNORECASE),
+    re.compile(r"\brepeated\s+(?:historical\s+)?incidents?\b", re.IGNORECASE),
+    re.compile(r"\bunresolved\s+critical\s+(?:defect|issue|bug)s?\b", re.IGNORECASE),
+    re.compile(r"\bexplicit(?:ly)?\s+high[- ]risk\b|\bhigh[- ]risk designation\b", re.IGNORECASE),
+    re.compile(r"\bknown\s+production\s+instability\b", re.IGNORECASE),
+    re.compile(
+        r"\b(?:failed\s+deployment\s+validation|deployment\s+validation\s+failed)\b",
+        re.IGNORECASE,
+    ),
+    re.compile(
+        r"\b(?:failure|occurrence)\s+(?:rate\s+)?(?:greater than|over|above)\s+30%\b",
+        re.IGNORECASE,
+    ),
+    re.compile(r"\b(?:likelihood|classification)\s*:?\s*probable\b", re.IGNORECASE),
+)
+_APPLICATION_PHRASE_RE = re.compile(
+    r"\b((?:[A-Z][A-Za-z0-9&._-]*)(?:\s+[A-Z][A-Za-z0-9&._-]*){0,3}\s+"
+    r"(?:[Aa]pplication|[Ss]ervice))\b",
+)
 
 
 def clean_text(value: Any) -> str | None:
@@ -586,6 +647,200 @@ def _failure_from_test(
     )
 
 
+def _bucket_3_text_sources(
+    canonical: CanonicalDodDocument,
+    source_ref_map: dict[str, EvidenceSourceRef] | None,
+) -> list[tuple[str, str | None]]:
+    sources: list[tuple[str, str | None]] = []
+    for item in canonical.change_context.work_items:
+        source_ref = _friendly_source_ref("work_item", item, source_ref_map)
+        for value in (item.title, item.description, item.acceptance_criteria):
+            if is_meaningful_text(clean_text(value)):
+                sources.append((clean_text(value) or "", source_ref))
+    for item in canonical.change_context.pull_requests:
+        source_ref = _friendly_source_ref("pull_request", item, source_ref_map)
+        for value in (item.title, item.description):
+            if is_meaningful_text(clean_text(value)):
+                sources.append((clean_text(value) or "", source_ref))
+    for source_type, items in (
+        ("stage", canonical.execution_context.stages),
+        ("job", canonical.execution_context.jobs),
+        ("task", canonical.execution_context.tasks),
+    ):
+        for item in items:
+            if is_meaningful_text(clean_text(item.name)):
+                sources.append(
+                    (
+                        clean_text(item.name) or "",
+                        _friendly_source_ref(source_type, item, source_ref_map),
+                    )
+                )
+    sources.extend(
+        (clean_text(value) or "", None)
+        for value in [
+            *canonical.change_context.change_summary_signals,
+            *canonical.execution_context.deployment_signals,
+            *canonical.risk_context.risk_signals,
+        ]
+        if is_meaningful_text(clean_text(value))
+    )
+    return sources
+
+
+def _build_uat_deployment_evidence(
+    canonical: CanonicalDodDocument,
+    max_items: int,
+    source_ref_map: dict[str, EvidenceSourceRef] | None,
+) -> UatDeploymentEvidence:
+    stages = [
+        stage for stage in canonical.execution_context.stages if _UAT_NAME_RE.search(stage.name)
+    ]
+    stage_ids = {stage.id for stage in stages if stage.id}
+    jobs = [
+        job
+        for job in canonical.execution_context.jobs
+        if (job.parent_id and job.parent_id in stage_ids) or _UAT_NAME_RE.search(job.name)
+    ]
+    job_ids = {job.id for job in jobs if job.id}
+    tasks = [
+        task
+        for task in canonical.execution_context.tasks
+        if (
+            (task.parent_id and task.parent_id in stage_ids | job_ids)
+            or _UAT_NAME_RE.search(task.name)
+        )
+        and _contains_hint(task.name, _UAT_ACTIVITY_TERMS)
+    ][:max_items]
+    activity_items: list[tuple[str, CanonicalTask | CanonicalJob]] = [
+        ("task", task) for task in tasks
+    ]
+    if not activity_items:
+        activity_items = [
+            ("job", job)
+            for job in jobs
+            if _contains_hint(job.name, _UAT_ACTIVITY_TERMS)
+        ][:max_items]
+    activities = [
+        UatDeploymentActivityEvidence(
+            name=truncate_text(clean_text(item.name), 240) or "unknown",
+            status=clean_text(item.result) or clean_text(item.state),
+            duration_seconds=item.duration_seconds,
+            source_ref=_friendly_source_ref(source_type, item, source_ref_map),
+        )
+        for source_type, item in activity_items
+    ]
+    durations = [activity.duration_seconds for activity in activities]
+    total_duration: float | None = None
+    if activities and all(duration is not None for duration in durations):
+        total_duration = sum(float(duration) for duration in durations if duration is not None)
+    elif activities and stages and stages[0].duration_seconds is not None:
+        total_duration = stages[0].duration_seconds
+    stage_name = (
+        clean_text(stages[0].name)
+        if stages
+        else clean_text(jobs[0].name)
+        if jobs
+        else None
+    )
+    return UatDeploymentEvidence(
+        stage_name=stage_name,
+        activities=activities,
+        total_deployment_duration_seconds=total_duration,
+    )
+
+
+def _build_resiliency_evidence(
+    sources: list[tuple[str, str | None]],
+) -> ResiliencyEvidence:
+    active_active = False
+    alternate_region: str | None = None
+    rolling_deployment = False
+    traffic_shift = False
+    passive_instance_available = False
+    evidence_refs: list[str] = []
+    for text, source_ref in sources:
+        lowered = text.lower()
+        matched = False
+        if re.search(r"\bactive[- ]active\b", lowered):
+            active_active = True
+            matched = True
+        if re.search(
+            r"\b(?:alternate|secondary|separate|passive)\s+(?:region|data center)\b",
+            lowered,
+        ):
+            alternate_region = alternate_region or truncate_text(text, MAX_SIGNAL_CHARS)
+            matched = True
+        if "rolling deployment" in lowered or "rolling update" in lowered:
+            rolling_deployment = True
+            matched = True
+        if re.search(
+            r"\btraffic\b.*\b(?:remain|remains|shift|shifted|route|routed|healthy instance)\b",
+            lowered,
+        ):
+            traffic_shift = True
+            matched = True
+        if re.search(
+            r"\b(?:passive|secondary)\s+(?:instance|region|data center)\b.*"
+            r"\b(?:available|healthy|active|remains)\b",
+            lowered,
+        ) or re.search(r"\bdeployment affects only the passive\b", lowered):
+            passive_instance_available = True
+            matched = True
+        if matched and source_ref:
+            evidence_refs.append(source_ref)
+    return ResiliencyEvidence(
+        active_active=active_active,
+        alternate_region=alternate_region,
+        rolling_deployment=rolling_deployment,
+        traffic_shift=traffic_shift,
+        passive_instance_available=passive_instance_available,
+        evidence_refs=dedupe_preserve_order(evidence_refs),
+    )
+
+
+def _collect_matching_evidence(
+    sources: list[tuple[str, str | None]],
+    patterns: tuple[re.Pattern[str], ...],
+    max_items: int,
+) -> tuple[list[str], list[str]]:
+    values: list[str] = []
+    references: list[str] = []
+    for text, source_ref in sources:
+        if not any(pattern.search(text) for pattern in patterns):
+            continue
+        value = truncate_text(text, MAX_SIGNAL_CHARS)
+        if value:
+            values.append(value)
+        if source_ref:
+            references.append(source_ref)
+    return (
+        dedupe_preserve_order(values)[:max_items],
+        dedupe_preserve_order(references),
+    )
+
+
+def _application_candidates(
+    canonical: CanonicalDodDocument,
+    sources: list[tuple[str, str | None]],
+    max_items: int,
+) -> list[str]:
+    candidates: list[str] = []
+    for text, _ in sources:
+        candidates.extend(match.group(1).strip() for match in _APPLICATION_PHRASE_RE.finditer(text))
+    candidates.extend(canonical.risk_context.impacted_components)
+    if canonical.run_context.repository_name:
+        candidates.append(canonical.run_context.repository_name)
+    safe_candidates = [
+        truncate_text(clean_text(value), 160) or ""
+        for value in candidates
+        if is_meaningful_text(clean_text(value))
+        and "refs/heads/" not in (clean_text(value) or "").lower()
+        and "/" not in (clean_text(value) or "")
+        and "\\" not in (clean_text(value) or "")
+    ]
+    return [value for value in dedupe_preserve_order(safe_candidates) if value][:max_items]
+
+
 def build_bucket_3_rollback_risk(
     canonical: CanonicalDodDocument,
     max_items_per_section: int = DEFAULT_MAX_ITEMS_PER_SECTION,
@@ -644,6 +899,29 @@ def build_bucket_3_rollback_risk(
     )
     risk_signals = [value for value in risk_signals if value]
 
+    sources = _bucket_3_text_sources(canonical, source_ref_map)
+    uat_deployment = _build_uat_deployment_evidence(
+        canonical,
+        max_items_per_section,
+        source_ref_map,
+    )
+    resiliency_evidence = _build_resiliency_evidence(sources)
+    planned_impact_evidence, planned_impact_refs = _collect_matching_evidence(
+        sources,
+        _PLANNED_IMPACT_PATTERNS,
+        max_items_per_section,
+    )
+    high_risk_evidence, high_risk_refs = _collect_matching_evidence(
+        sources,
+        _HIGH_RISK_PATTERNS,
+        max_items_per_section,
+    )
+    application_candidates = _application_candidates(
+        canonical,
+        sources,
+        max_items_per_section,
+    )
+
     gaps = list(canonical.risk_context.missing_risk_context)
     if not artifact_evidence:
         gaps.append("no artifacts found")
@@ -660,6 +938,10 @@ def build_bucket_3_rollback_risk(
         [
             *(item.source_ref for item in artifact_evidence if item.source_ref),
             *(item.source_ref for item in combined if item.source_ref),
+            *(item.source_ref for item in uat_deployment.activities if item.source_ref),
+            *resiliency_evidence.evidence_refs,
+            *planned_impact_refs,
+            *high_risk_refs,
         ]
     )
 
@@ -679,6 +961,11 @@ def build_bucket_3_rollback_risk(
         impacted_components=impacted_components,
         risk_flags=risk_flags,
         risk_signals=risk_signals,
+        uat_deployment=uat_deployment,
+        resiliency_evidence=resiliency_evidence,
+        application_candidates=application_candidates,
+        planned_impact_evidence=planned_impact_evidence,
+        high_risk_evidence=high_risk_evidence,
         failed_or_warning_evidence=combined,
         evidence_gaps=dedupe_preserve_order(gaps),
         evidence_references=references,

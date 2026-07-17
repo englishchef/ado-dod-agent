@@ -85,8 +85,8 @@
     "semantic_hash": ""
   },
   "backend/app/models/canonical.py": {
-    "mtime": 1777757537.8753834,
-    "ast_hash": "6ebd676aa6d3fbab36522e728c9c3b31",
+    "mtime": 1784306514.3815186,
+    "ast_hash": "0224440954e1d762ee7f6db16ccd891c",
     "semantic_hash": ""
   },
   "backend/app/models/dod_contracts.py": {
@@ -95,8 +95,8 @@
     "semantic_hash": ""
   },
   "backend/app/models/evidence.py": {
-    "mtime": 1784296748.250271,
-    "ast_hash": "1f8749cbe53aa03cee8a138328dc1f88",
+    "mtime": 1784306565.5801926,
+    "ast_hash": "e8671f8038d2101d348f715e37cca0d3",
     "semantic_hash": ""
   },
   "backend/app/models/inputs.py": {
@@ -135,8 +135,8 @@
     "semantic_hash": ""
   },
   "backend/app/models/traceability.py": {
-    "mtime": 1784297011.2452278,
-    "ast_hash": "d74ad674cf05066ca23f9a0d2e302051",
+    "mtime": 1784306929.6310577,
+    "ast_hash": "f871e00a97220fc7b6947a2370f900cc",
     "semantic_hash": ""
   },
   "backend/app/models/validated_outputs.py": {
@@ -160,8 +160,8 @@
     "semantic_hash": ""
   },
   "backend/app/prompts/bucket_3_rollback_risk.py": {
-    "mtime": 1784304770.9178126,
-    "ast_hash": "422905863172afee099f9be593806fc9",
+    "mtime": 1784308373.6677501,
+    "ast_hash": "2214024ee2368ec2e746f3a4c209e5fb",
     "semantic_hash": ""
   },
   "backend/app/prompts/repair.py": {
@@ -275,13 +275,13 @@
     "semantic_hash": ""
   },
   "backend/app/services/evidence/bucket_3_selection.py": {
-    "mtime": 1784298094.6705072,
-    "ast_hash": "5d5743b8440e7fe96fa78caa28b3d6b2",
+    "mtime": 1784307902.2918174,
+    "ast_hash": "89038d7cda7d15913da786c6efe35832",
     "semantic_hash": ""
   },
   "backend/app/services/evidence/builder.py": {
-    "mtime": 1784298973.6861556,
-    "ast_hash": "eed1264796c25d42419f5674403711e7",
+    "mtime": 1784307146.14525,
+    "ast_hash": "fb246a12290741c12ac3f49422cf275e",
     "semantic_hash": ""
   },
   "backend/app/services/evidence/reference_normalizer.py": {
@@ -295,8 +295,8 @@
     "semantic_hash": ""
   },
   "backend/app/services/formatting/servicenow_formatter.py": {
-    "mtime": 1784297012.7717447,
-    "ast_hash": "06b1274e61a54d344b2274d99c1603d5",
+    "mtime": 1784306931.0179381,
+    "ast_hash": "9673d6b7a77d9d7f17bbccef9693e0c4",
     "semantic_hash": ""
   },
   "backend/app/services/llm/__init__.py": {
@@ -325,8 +325,8 @@
     "semantic_hash": ""
   },
   "backend/app/services/normalizers/canonical.py": {
-    "mtime": 1777758399.1890404,
-    "ast_hash": "e532d9d2069a0d1cdfe46bdc70288d4a",
+    "mtime": 1784306540.425856,
+    "ast_hash": "1b476ea065cb8acf52dbba9fa31c6ff6",
     "semantic_hash": ""
   },
   "backend/app/services/observability/__init__.py": {
@@ -370,8 +370,8 @@
     "semantic_hash": ""
   },
   "backend/app/services/routing/prompt_strategy.py": {
-    "mtime": 1784257927.8463948,
-    "ast_hash": "0f800f7a4ae3098d120be1c769d4e30d",
+    "mtime": 1784307108.5442088,
+    "ast_hash": "d92230147dfc64925eaebaca272eb3bd",
     "semantic_hash": ""
   },
   "backend/app/services/routing/risk_tier.py": {
@@ -385,8 +385,8 @@
     "semantic_hash": ""
   },
   "backend/app/services/rules/backout_rules.py": {
-    "mtime": 1784257881.5136516,
-    "ast_hash": "ed242ce9924203986e85e25ee9580abb",
+    "mtime": 1784307009.2479684,
+    "ast_hash": "c46e910d1306ea42845b11ee845a51c9",
     "semantic_hash": ""
   },
   "backend/app/services/rules/confidence_rules.py": {
@@ -460,13 +460,13 @@
     "semantic_hash": ""
   },
   "backend/app/services/validation/output_repair.py": {
-    "mtime": 1784305113.9156425,
-    "ast_hash": "3cac6a44e9e678ad2faf91d91bc9b10e",
+    "mtime": 1784307698.691125,
+    "ast_hash": "c3aafb664416005231f36f458247e01f",
     "semantic_hash": ""
   },
   "backend/app/services/validation/output_validator.py": {
-    "mtime": 1784304773.7209194,
-    "ast_hash": "7fcef3cf10152a2392c72a839febc907",
+    "mtime": 1784307892.5975018,
+    "ast_hash": "0c4964022a2eb3bf08290f864334c07e",
     "semantic_hash": ""
   },
   "backend/app/services/validation/payload_assembler.py": {
@@ -820,13 +820,13 @@
     "semantic_hash": ""
   },
   "tests/unit/test_bucket_3_field_refinement.py": {
-    "mtime": 1784305115.434418,
-    "ast_hash": "2383b6f0dd6aae7bac945fff83201360",
+    "mtime": 1784307397.3515482,
+    "ast_hash": "e747458b1b00c947d93bd5d6341f12c6",
     "semantic_hash": ""
   },
   "tests/unit/test_bucket_prompts.py": {
-    "mtime": 1784304675.4014935,
-    "ast_hash": "08de583410108bc2bcc2b2e4ca28d341",
+    "mtime": 1784307851.1479063,
+    "ast_hash": "db89de66e13f13816765fd7325572db8",
     "semantic_hash": ""
   },
   "tests/unit/test_build_client.py": {
@@ -845,8 +845,8 @@
     "semantic_hash": ""
   },
   "tests/unit/test_canonical_normalizer.py": {
-    "mtime": 1777758291.2296784,
-    "ast_hash": "e691c12633f2a5524b116a2e123f06b5",
+    "mtime": 1784307471.970166,
+    "ast_hash": "175ef39c78a282305003bd65264d3c14",
     "semantic_hash": ""
   },
   "tests/unit/test_change_intent_field_separation.py": {
@@ -1135,8 +1135,8 @@
     "semantic_hash": ""
   },
   "tests/unit/test_prompt_strategy_routing.py": {
-    "mtime": 1784258417.470233,
-    "ast_hash": "9d58857e1e6afaee052e048eafc12513",
+    "mtime": 1784307398.785133,
+    "ast_hash": "95ae24f31331f8448f36c4d445ce15ef",
     "semantic_hash": ""
   },
   "tests/unit/test_raw_metadata_coordinator.py": {
@@ -1235,8 +1235,8 @@
     "semantic_hash": ""
   },
   "tests/unit/test_traceability_report.py": {
-    "mtime": 1784297927.09533,
-    "ast_hash": "4da9ba69c5be2d263f14a245b74f1d30",
+    "mtime": 1784307399.9442651,
+    "ast_hash": "d4c78f4fda917be619f8790117afb671",
     "semantic_hash": ""
   },
   "tests/unit/test_validate_service_now_payload_script.py": {
@@ -1317,6 +1317,11 @@
   "docs/post-deploy-validation.md": {
     "mtime": 1782335451.926816,
     "ast_hash": "136fec167878bd52b069070590c17d91",
+    "semantic_hash": ""
+  },
+  "tests/unit/test_bucket_3_backout_derivation.py": {
+    "mtime": 1784307544.706087,
+    "ast_hash": "0599f6e7a25a2ae00f834283068f8add",
     "semantic_hash": ""
   }
 }

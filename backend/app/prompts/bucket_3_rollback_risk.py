@@ -3,16 +3,22 @@
 from __future__ import annotations
 
 import json
+from copy import deepcopy
 from typing import Any
 
-PROMPT_VERSION = "1.4"
+PROMPT_VERSION = "1.5"
 NON_ABSOLUTE_RISK_WORDING = "No specific risk signals were detected in the collected evidence"
 
 
 def build_prompt(evidence: dict[str, Any], prompt_strategy: str | None = None) -> str:
     """Build the bucket 3 prompt from deterministic evidence only."""
 
-    evidence_json = json.dumps(evidence, indent=2, sort_keys=True, ensure_ascii=False)
+    evidence_json = json.dumps(
+        _prompt_safe_evidence(evidence),
+        indent=2,
+        sort_keys=True,
+        ensure_ascii=False,
+    )
     strategy = prompt_strategy or "bucket_3_standard"
     strategy_guidance = _strategy_guidance(strategy)
     return f"""You are generating ServiceNow-ready business verbiage for change management.
@@ -52,16 +58,14 @@ Guidance:
 backout_plan field intent:
 - Answer only: What actionable steps reverse the production change, and approximately how long
   will the backout take?
-- Derive reverse steps only from the valid deployment actions in uat_deployment.activities. This
-  object contains the selected lower environment after applying UAT, QA, Test, INTG, SIT, DEV,
-  then other non-production priority.
-- Treat Apply Solution Upgrade, Upgrade Solution, Import Solution, Deploy Solution or Application,
-  package installation or deployment, Publish Customizations, configuration application,
-  infrastructure or database deployment, and application or service restart as deployment actions.
-- Never derive a reverse step from Get Base Solution Versions, Get Solution Version, artifact
-  handling, checkout, initialization, approval, wait, authentication, discovery, variable or
-  metadata retrieval, test-only activity, validation, health checks, or diagnostics. A task is not
-  a deployment action merely because its name contains "solution".
+- Use only backout_step_derivation.normalized_actions and the corresponding generated_step values
+  to describe technical reversal actions. These values were produced deterministically by
+  recursively inspecting the selected stage descendants.
+- Do not reinterpret raw task names or metadata, override an action classification, or add a
+  database, infrastructure, configuration, restart, package, application, or solution action that
+  is absent from backout_step_derivation.
+- When backout_step_derivation.fallback_used is true, use a conservative restoration step for the
+  previously validated application or solution; do not invent application-specific procedures.
 - Format the actions as a short numbered list followed by exactly one duration line beginning
   "Estimated backout time:".
 - Base the duration only on backout_time_derivation, whose calculation method is the full selected
@@ -71,7 +75,8 @@ backout_plan field intent:
   Not available from the pipeline evidence." Do not invent an estimated duration.
 - Do not include build IDs, build numbers, version numbers, branch names, pipeline names, artifact
   names, Azure DevOps terminology, source commits, CI/CD details, release package metadata,
-  stakeholder coordination, business justification, risk analysis, test-result discussion,
+  task names, task GUIDs, commands, paths, URLs, stakeholder coordination, business justification,
+  risk analysis, test-result discussion,
   missing-evidence commentary, or speculative fix-forward steps.
 - Never put statements such as "explicit rollback validation evidence was not available" in
   backout_plan. Missing evidence belongs only in missing_information.
@@ -132,11 +137,50 @@ Evidence:
 {evidence_json}"""
 
 
+def _prompt_safe_evidence(evidence: dict[str, Any]) -> dict[str, Any]:
+    """Replace raw timeline detail with deterministic action facts for prompt consumption."""
+
+    prompt_evidence = deepcopy(evidence)
+    nested_bucket = prompt_evidence.get("bucket_3")
+    bucket = nested_bucket if isinstance(nested_bucket, dict) else prompt_evidence
+    if not isinstance(bucket, dict):
+        return prompt_evidence
+    derivation = bucket.get("backout_step_derivation")
+    if not isinstance(derivation, dict):
+        return prompt_evidence
+    deployment = bucket.get("uat_deployment")
+    if isinstance(deployment, dict) and isinstance(deployment.get("activities"), list):
+        deployment["activities"] = []
+    source_tasks = derivation.get("source_tasks")
+    if isinstance(source_tasks, list):
+        derivation["source_tasks"] = [
+            {
+                key: item[key]
+                for key in ("detected_action", "classification_evidence", "generated_step")
+                if key in item
+            }
+            for item in source_tasks
+            if isinstance(item, dict)
+        ]
+    ignored_tasks = derivation.get("ignored_tasks")
+    if isinstance(ignored_tasks, list):
+        derivation["ignored_tasks"] = [
+            {
+                key: item[key]
+                for key in ("classification", "reason")
+                if key in item
+            }
+            for item in ignored_tasks
+            if isinstance(item, dict)
+        ]
+    return prompt_evidence
+
+
 def _strategy_guidance(strategy: str) -> str:
     if strategy == "bucket_3_conservative_rollback":
         return """Strategy-specific guidance:
 - Use the selected lower-environment deployment activities for reverse steps when present.
-- If explicit reversal detail is absent, keep the plan operational and conservative without
+- If normalized reversal detail is absent, keep the plan operational and conservative without
   inserting build, artifact, version, pipeline, or missing-evidence commentary.
 - Put missing rollback evidence only in missing_information.
 - Do not claim rollback was tested or rollback validation completed."""

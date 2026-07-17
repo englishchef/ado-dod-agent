@@ -159,6 +159,44 @@ class BackoutTimeDerivationEvidence(EvidenceBaseModel):
     evidence_refs: list[str] = Field(default_factory=list)
 
 
+class BackoutStepSourceTaskEvidence(EvidenceBaseModel):
+    record_id: str | None = None
+    raw_name: str
+    record_type: str
+    task_type: str | None = None
+    depth: int
+    ancestor_names: list[str] = Field(default_factory=list)
+    detected_action: str
+    classification_evidence: list[str] = Field(default_factory=list)
+    generated_step: str
+    source_ref: str | None = None
+
+
+class BackoutStepIgnoredTaskEvidence(EvidenceBaseModel):
+    record_id: str | None = None
+    raw_name: str
+    record_type: str
+    task_type: str | None = None
+    depth: int
+    ancestor_names: list[str] = Field(default_factory=list)
+    classification: str
+    reason: str
+    source_ref: str | None = None
+
+
+class BackoutStepDerivationEvidence(EvidenceBaseModel):
+    recursive_traversal_used: bool = False
+    traversal_complete: bool = True
+    selected_stage_id: str | None = None
+    descendant_count: int = 0
+    max_depth: int = 0
+    source_tasks: list[BackoutStepSourceTaskEvidence] = Field(default_factory=list)
+    ignored_tasks: list[BackoutStepIgnoredTaskEvidence] = Field(default_factory=list)
+    normalized_actions: list[str] = Field(default_factory=list)
+    fallback_used: bool = False
+    fallback_reason: str | None = None
+
+
 class ApplicationCandidateScoreEvidence(EvidenceBaseModel):
     candidate: str
     score: int
@@ -231,6 +269,9 @@ class RollbackRiskEvidence(EvidenceBaseModel):
     rejected_stages: list[RejectedStageEvidence] = Field(default_factory=list)
     backout_time_derivation: BackoutTimeDerivationEvidence = Field(
         default_factory=BackoutTimeDerivationEvidence
+    )
+    backout_step_derivation: BackoutStepDerivationEvidence = Field(
+        default_factory=BackoutStepDerivationEvidence
     )
     resiliency_evidence: ResiliencyEvidence = Field(default_factory=ResiliencyEvidence)
     application_candidates: list[str] = Field(default_factory=list)

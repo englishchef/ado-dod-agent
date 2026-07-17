@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from html import unescape
 from typing import Any
@@ -22,6 +23,9 @@ from backend.app.models.evidence import (
     ApplicationCandidateScoreEvidence,
     ApplicationResolutionEvidence,
     ArtifactEvidence,
+    BackoutStepDerivationEvidence,
+    BackoutStepIgnoredTaskEvidence,
+    BackoutStepSourceTaskEvidence,
     BackoutTimeDerivationEvidence,
     ChangeIntentEvidence,
     CommitEvidence,
@@ -47,10 +51,13 @@ from backend.app.models.evidence import (
 )
 from backend.app.services.evidence.bucket_3_selection import (
     ENVIRONMENT_PRIORITY,
+    backout_step_for_action,
+    classify_deployment_action,
     deployment_action_kind,
     display_application_name,
     environment_priority,
     is_deployment_activity_name,
+    is_non_deployment_stage_name,
     normalize_application_candidate,
     normalize_environment_name,
     round_up_backout_minutes,
@@ -116,6 +123,12 @@ _APPLICATION_PHRASE_RE = re.compile(
     r"\b((?:[A-Z][A-Za-z0-9&._-]*)(?:\s+[A-Z][A-Za-z0-9&._-]*){0,3}\s+"
     r"(?:[Aa]pplication|[Ss]ervice))\b",
 )
+@dataclass(frozen=True)
+class _TimelineDescendant:
+    source_type: str
+    item: CanonicalJob | CanonicalTask
+    depth: int
+    ancestor_names: tuple[str, ...]
 
 
 def clean_text(value: Any) -> str | None:
@@ -708,59 +721,207 @@ def _container_activity_items(
     canonical: CanonicalDodDocument,
     container: CanonicalStage | CanonicalJob,
     source_type: str,
-) -> list[tuple[str, CanonicalStage | CanonicalJob | CanonicalTask]]:
-    if source_type == "stage":
-        jobs = [
-            job
-            for job in canonical.execution_context.jobs
-            if container.id and job.parent_id == container.id
-        ]
-        parent_ids = {container.id, *(job.id for job in jobs)} - {None}
-        tasks = [
-            task
-            for task in canonical.execution_context.tasks
-            if task.parent_id and task.parent_id in parent_ids
-        ]
-    else:
-        jobs = []
-        tasks = [
-            task
-            for task in canonical.execution_context.tasks
-            if container.id and task.parent_id == container.id
-        ]
+) -> list[_TimelineDescendant]:
+    """Return every descendant in timeline order, with cycle protection and ancestry."""
 
-    activities: list[tuple[str, CanonicalStage | CanonicalJob | CanonicalTask]] = [
-        ("task", task)
-        for task in tasks
-        if is_deployment_activity_name(task.name) and _is_completed_deployment_record(task)
+    if not container.id:
+        return []
+    records: list[tuple[int, str, CanonicalJob | CanonicalTask]] = []
+    fallback_order = 0
+    for item_type, items in (
+        ("job", canonical.execution_context.jobs),
+        ("task", canonical.execution_context.tasks),
+    ):
+        for item in items:
+            order = item.timeline_order
+            records.append(
+                (
+                    order if order is not None else 1_000_000 + fallback_order,
+                    item_type,
+                    item,
+                )
+            )
+            fallback_order += 1
+    records.sort(key=lambda record: record[0])
+
+    children: dict[str, list[tuple[str, CanonicalJob | CanonicalTask]]] = {}
+    record_keys: dict[int, str] = {}
+    for index, (_, item_type, item) in enumerate(records):
+        key = item.id or f"{item_type}:{index}"
+        record_keys[id(item)] = key
+        if item.parent_id:
+            children.setdefault(item.parent_id, []).append((item_type, item))
+
+    descendants: list[_TimelineDescendant] = []
+    visited = {container.id}
+    pending: list[
+        tuple[str, CanonicalJob | CanonicalTask, int, tuple[str, ...]]
+    ] = [
+        (item_type, item, 1, (container.name,))
+        for item_type, item in children.get(container.id, [])
     ]
-    if activities:
-        return activities
-    activities.extend(
-        ("job", job)
-        for job in jobs
-        if is_deployment_activity_name(job.name) and _is_completed_deployment_record(job)
+    while pending:
+        item_type, item, depth, ancestor_names = pending.pop(0)
+        key = record_keys.get(id(item), item.id or f"{item_type}:{len(descendants)}")
+        if key in visited:
+            continue
+        visited.add(key)
+        descendants.append(
+            _TimelineDescendant(
+                source_type=item_type,
+                item=item,
+                depth=depth,
+                ancestor_names=ancestor_names,
+            )
+        )
+        if item.id:
+            pending.extend(
+                (
+                    child_type,
+                    child,
+                    depth + 1,
+                    (*ancestor_names, item.name),
+                )
+                for child_type, child in children.get(item.id, [])
+            )
+    return descendants
+
+
+def _descendant_classification(
+    descendant: _TimelineDescendant,
+) -> tuple[str, list[str], str | None]:
+    item = descendant.item
+    if isinstance(item, CanonicalTask):
+        result = classify_deployment_action(
+            name=item.name,
+            task_type=item.type,
+            task_definition=item.task_definition,
+            description=item.description,
+            command=item.command,
+            inputs=item.input_signals,
+            parent_context=descendant.ancestor_names,
+            log_summary=item.log_summary,
+        )
+        return result.classification, list(result.classification_evidence), item.task_definition
+    result = classify_deployment_action(
+        name=item.name,
+        parent_context=descendant.ancestor_names,
     )
-    if activities:
-        return activities
-    if is_deployment_activity_name(container.name):
-        return [(source_type, container)]
-    return []
+    return result.classification, list(result.classification_evidence), None
+
+
+def _ignored_activity_reason(classification: str) -> str:
+    reasons = {
+        "metadata_lookup": "Does not modify the target environment.",
+        "preparation": "Prepares the deployment but does not change the target environment.",
+        "approval": "Approval activity does not modify the target environment.",
+        "wait": "Wait activity does not modify the target environment.",
+        "diagnostic": "Diagnostic activity does not modify the target environment.",
+        "test": "Test activity does not modify the target environment.",
+        "unknown": "No evidence-supported deployment action was identified.",
+    }
+    return reasons.get(classification, "Activity does not generate a rollback action.")
+
+
+def _backout_step_derivation(
+    container: CanonicalStage | CanonicalJob,
+    descendants: list[_TimelineDescendant],
+    source_ref_map: dict[str, EvidenceSourceRef] | None,
+) -> BackoutStepDerivationEvidence:
+    source_tasks: list[BackoutStepSourceTaskEvidence] = []
+    ignored_tasks: list[BackoutStepIgnoredTaskEvidence] = []
+    normalized_actions: list[str] = []
+    deployment_action_found = False
+    for descendant in descendants:
+        item = descendant.item
+        classification, classification_evidence, task_type = _descendant_classification(
+            descendant
+        )
+        generated_step = backout_step_for_action(classification)
+        if generated_step and _is_completed_deployment_record(item):
+            source_tasks.append(
+                BackoutStepSourceTaskEvidence(
+                    record_id=item.id,
+                    raw_name=truncate_text(clean_text(item.name), 240) or "unknown",
+                    record_type=descendant.source_type,
+                    task_type=truncate_text(clean_text(task_type), 240),
+                    depth=descendant.depth,
+                    ancestor_names=list(descendant.ancestor_names),
+                    detected_action=classification,
+                    classification_evidence=classification_evidence,
+                    generated_step=generated_step,
+                    source_ref=_friendly_source_ref(
+                        descendant.source_type,
+                        item,
+                        source_ref_map,
+                    ),
+                )
+            )
+            if classification not in normalized_actions:
+                normalized_actions.append(classification)
+            deployment_action_found = deployment_action_found or classification != (
+                "deployment_validation"
+            )
+            continue
+        reason = (
+            "Activity did not complete successfully."
+            if generated_step
+            else _ignored_activity_reason(classification)
+        )
+        ignored_tasks.append(
+            BackoutStepIgnoredTaskEvidence(
+                record_id=item.id,
+                raw_name=truncate_text(clean_text(item.name), 240) or "unknown",
+                record_type=descendant.source_type,
+                task_type=truncate_text(clean_text(task_type), 240),
+                depth=descendant.depth,
+                ancestor_names=list(descendant.ancestor_names),
+                classification=classification,
+                reason=reason,
+                source_ref=_friendly_source_ref(descendant.source_type, item, source_ref_map),
+            )
+        )
+    fallback_used = not deployment_action_found
+    return BackoutStepDerivationEvidence(
+        recursive_traversal_used=True,
+        traversal_complete=True,
+        selected_stage_id=container.id,
+        descendant_count=len(descendants),
+        max_depth=max((item.depth for item in descendants), default=0),
+        source_tasks=source_tasks,
+        ignored_tasks=ignored_tasks,
+        normalized_actions=normalized_actions,
+        fallback_used=fallback_used,
+        fallback_reason=(
+            "No evidence-supported deployment action was identified beneath the selected "
+            "lower-environment stage."
+            if fallback_used
+            else None
+        ),
+    )
+
+
+def _is_mutating_descendant(descendant: _TimelineDescendant) -> bool:
+    classification, _, _ = _descendant_classification(descendant)
+    return (
+        classification != "deployment_validation"
+        and backout_step_for_action(classification) is not None
+        and _is_completed_deployment_record(descendant.item)
+    )
 
 
 def _stage_rejection_reason(
     container: CanonicalStage | CanonicalJob,
     environment: str | None,
-    activities: list[tuple[str, CanonicalStage | CanonicalJob | CanonicalTask]],
 ) -> str | None:
     if environment == "PRODUCTION":
         return "Production stages cannot be used for backout-duration estimation."
     if environment is None:
         return "Not a lower-environment deployment stage."
+    if is_non_deployment_stage_name(container.name):
+        return "Stage is build, scan, artifact, approval-only, or test-only activity."
     if not _is_completed_deployment_record(container):
         return "Stage was skipped, canceled, failed, or did not substantially complete."
-    if not activities:
-        return "Stage does not contain a valid application or solution deployment activity."
     if container.start_time is None or container.finish_time is None:
         return "Deployment-stage start or finish timing is missing."
     duration = (container.finish_time - container.start_time).total_seconds()
@@ -778,6 +939,7 @@ def _lower_environment_deployment_evidence(
     list[LowerEnvironmentStageCandidateEvidence],
     list[RejectedStageEvidence],
     BackoutTimeDerivationEvidence,
+    BackoutStepDerivationEvidence,
     list[str],
 ]:
     stage_ids = {stage.id for stage in canonical.execution_context.stages if stage.id}
@@ -799,14 +961,19 @@ def _lower_environment_deployment_evidence(
             int,
             str,
             CanonicalStage | CanonicalJob,
-            list[tuple[str, CanonicalStage | CanonicalJob | CanonicalTask]],
+            list[_TimelineDescendant],
             LowerEnvironmentStageCandidateEvidence,
         ]
     ] = []
     timing_missing = False
     for index, (source_type, container) in enumerate(containers):
         environment = normalize_environment_name(container.name)
-        activities = _container_activity_items(canonical, container, source_type)
+        descendants = _container_activity_items(canonical, container, source_type)
+        activity_items = [
+            descendant
+            for descendant in descendants
+            if _is_mutating_descendant(descendant)
+        ]
         duration = (
             (container.finish_time - container.start_time).total_seconds()
             if container.start_time is not None and container.finish_time is not None
@@ -821,12 +988,12 @@ def _lower_environment_deployment_evidence(
             start_time=container.start_time,
             finish_time=container.finish_time,
             duration_seconds=duration,
-            deployment_activities=[item.name for _, item in activities],
+            deployment_activities=[item.item.name for item in activity_items],
             source_ref=source_ref,
         )
         if environment is not None:
             candidates.append(candidate)
-        reason = _stage_rejection_reason(container, environment, activities)
+        reason = _stage_rejection_reason(container, environment)
         if reason is not None:
             rejected.append(RejectedStageEvidence(stage_name=container.name, reason=reason))
             if "timing" in reason.lower() and environment not in {None, "PRODUCTION"}:
@@ -838,7 +1005,7 @@ def _lower_environment_deployment_evidence(
                 index,
                 source_type,
                 container,
-                activities,
+                descendants,
                 candidate,
             )
         )
@@ -846,19 +1013,34 @@ def _lower_environment_deployment_evidence(
     valid.sort(key=lambda item: (item[0], item[1]))
     selected = valid[0] if valid else None
     if selected is not None:
-        _, _, source_type, container, activity_items, selected_candidate = selected
+        _, _, source_type, container, descendants, selected_candidate = selected
         selected_candidate.selected = True
         selected_environment = normalize_environment_name(container.name)
         selected_ref = _friendly_source_ref(source_type, container, source_ref_map)
-        activity_items = activity_items[:max_items]
+        step_derivation = _backout_step_derivation(
+            container,
+            descendants,
+            source_ref_map,
+        )
+        activity_items = [
+            descendant
+            for descendant in descendants
+            if _is_mutating_descendant(descendant)
+        ][:max_items]
         activity_evidence = [
             UatDeploymentActivityEvidence(
-                name=truncate_text(clean_text(item.name), 240) or "unknown",
-                status=clean_text(item.result) or clean_text(item.state),
-                duration_seconds=item.duration_seconds,
-                source_ref=_friendly_source_ref(item_type, item, source_ref_map),
+                name=truncate_text(clean_text(descendant.item.name), 240) or "unknown",
+                status=(
+                    clean_text(descendant.item.result) or clean_text(descendant.item.state)
+                ),
+                duration_seconds=descendant.item.duration_seconds,
+                source_ref=_friendly_source_ref(
+                    descendant.source_type,
+                    descendant.item,
+                    source_ref_map,
+                ),
             )
-            for item_type, item in activity_items
+            for descendant in activity_items
         ]
         assert container.start_time is not None
         assert container.finish_time is not None
@@ -893,7 +1075,7 @@ def _lower_environment_deployment_evidence(
             else:
                 reason = f"Lower priority than selected {selected_environment} environment."
             rejected.append(RejectedStageEvidence(stage_name=other.name, reason=reason))
-        return deployment, candidates, rejected, derivation, []
+        return deployment, candidates, rejected, derivation, step_derivation, []
 
     warnings = ["BACKOUT_DURATION_LOWER_ENVIRONMENT_NOT_FOUND"]
     if timing_missing:
@@ -903,6 +1085,7 @@ def _lower_environment_deployment_evidence(
         candidates,
         rejected,
         BackoutTimeDerivationEvidence(environment_priority=list(ENVIRONMENT_PRIORITY)),
+        BackoutStepDerivationEvidence(),
         warnings,
     )
 
@@ -1069,8 +1252,10 @@ def _application_resolution(
         kind = deployment_action_kind(task.name)
         if target and kind in {
             "solution_upgrade",
+            "solution_deployment",
             "solution_import",
             "solution_deploy",
+            "package_deployment",
             "package_deploy",
         }:
             add_candidate(target, "solution_or_package", 75)
@@ -1245,6 +1430,7 @@ def build_bucket_3_rollback_risk(
         environment_candidates,
         rejected_stages,
         backout_time_derivation,
+        backout_step_derivation,
         bucket_3_warnings,
     ) = _lower_environment_deployment_evidence(
         canonical,
@@ -1290,6 +1476,11 @@ def build_bucket_3_rollback_risk(
             *(item.source_ref for item in artifact_evidence if item.source_ref),
             *(item.source_ref for item in combined if item.source_ref),
             *(item.source_ref for item in uat_deployment.activities if item.source_ref),
+            *(
+                item.source_ref
+                for item in backout_step_derivation.source_tasks
+                if item.source_ref
+            ),
             *backout_time_derivation.evidence_refs,
             *resiliency_evidence.evidence_refs,
             *planned_impact_refs,
@@ -1317,6 +1508,7 @@ def build_bucket_3_rollback_risk(
         environment_candidates=environment_candidates,
         rejected_stages=rejected_stages,
         backout_time_derivation=backout_time_derivation,
+        backout_step_derivation=backout_step_derivation,
         resiliency_evidence=resiliency_evidence,
         application_candidates=application_candidates,
         application_resolution=application_resolution,

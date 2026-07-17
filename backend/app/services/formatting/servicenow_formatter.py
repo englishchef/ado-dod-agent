@@ -136,6 +136,9 @@ def build_traceability_report(
         backout_time_derivation=_optional_dict(
             bucket_3_evidence.get("backout_time_derivation")
         ),
+        backout_step_derivation=_optional_dict(
+            bucket_3_evidence.get("backout_step_derivation")
+        ),
         rejected_stages=_dict_list(bucket_3_evidence.get("rejected_stages")),
         deployment_activities_used=_dict_list(
             _safe_dict(bucket_3_evidence.get("uat_deployment")).get("activities")

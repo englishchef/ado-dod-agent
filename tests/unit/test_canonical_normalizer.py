@@ -223,6 +223,31 @@ def test_timeline_classification_into_stages_jobs_tasks() -> None:
     assert document.execution_context.tasks[0].name == "Run tests"
 
 
+def test_timeline_task_keeps_only_classification_relevant_metadata() -> None:
+    bundle = _build_complete_raw_bundle()
+    task = bundle["raw"]["timeline"]["records"][2]
+    task.update(
+        {
+            "name": "Deploy_03",
+            "task": {"name": "Power Platform Import Solution", "version": "2.0.0"},
+            "description": "Import the validated solution",
+            "inputs": {
+                "command": "pac solution import",
+                "solutionName": "AcctShutdownAcctCompromiseASAC",
+                "serviceConnection": "must-not-be-copied",
+            },
+        }
+    )
+
+    normalized = normalize_raw_bundle(bundle).execution_context.tasks[0]
+
+    assert normalized.task_definition == "Power Platform Import Solution"
+    assert normalized.command == "pac solution import"
+    assert normalized.input_signals["solutionName"] == "AcctShutdownAcctCompromiseASAC"
+    assert "serviceConnection" not in normalized.input_signals
+    assert normalized.timeline_order == 2
+
+
 def test_work_item_field_mapping_identity_and_tags() -> None:
     document = normalize_raw_bundle(_build_complete_raw_bundle())
     work_item = document.change_context.work_items[0]

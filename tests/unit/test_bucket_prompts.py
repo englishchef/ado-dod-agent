@@ -163,9 +163,9 @@ def test_bucket_3_prompt_enforces_lower_environment_backout_and_evidence_likelih
         }
     )
 
-    assert "Derive reverse steps only from the valid deployment actions" in prompt
-    assert "UAT, QA, Test, INTG, SIT, DEV" in prompt
-    assert "Get Base Solution Versions" in prompt
+    assert "Use only backout_step_derivation.normalized_actions" in prompt
+    assert "recursively inspecting the selected stage descendants" in prompt
+    assert "Do not reinterpret raw task names or metadata" in prompt
     assert "full selected" in prompt
     assert "Never sum or select individual task durations" in prompt
     assert "Not available from the pipeline evidence" in prompt
@@ -188,6 +188,36 @@ def test_bucket_3_prompt_enforces_lower_environment_backout_and_evidence_likelih
         '"Mitigation:"',
     ):
         assert forbidden_label in prompt
+
+
+def test_bucket_3_prompt_passes_normalized_actions_without_raw_task_metadata() -> None:
+    prompt = bucket_3_rollback_risk.build_prompt(
+        {
+            "uat_deployment": {"activities": [{"name": "Deploy_03"}]},
+            "backout_step_derivation": {
+                "normalized_actions": ["solution_deployment"],
+                "source_tasks": [
+                    {
+                        "raw_name": "Deploy_03",
+                        "task_type": "Power Platform Import Solution",
+                        "detected_action": "solution_deployment",
+                        "classification_evidence": ["task_type", "command"],
+                        "generated_step": (
+                            "Redeploy the previously validated solution version."
+                        ),
+                        "command": "pac solution import --path C:\\secret\\solution.zip",
+                    }
+                ],
+                "ignored_tasks": [],
+            },
+        }
+    )
+
+    assert '"detected_action": "solution_deployment"' in prompt
+    assert "Redeploy the previously validated solution version" in prompt
+    assert "Deploy_03" not in prompt
+    assert "Power Platform Import Solution" not in prompt
+    assert "C:\\secret" not in prompt
 
 
 def test_all_prompts_require_json_only_output() -> None:

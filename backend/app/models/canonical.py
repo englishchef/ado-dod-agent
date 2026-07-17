@@ -94,6 +94,7 @@ class ChangeContext(CanonicalBaseModel):
 class CanonicalStage(CanonicalBaseModel):
     id: str | None = None
     name: str
+    timeline_order: int | None = None
     state: str | None = None
     result: str | None = None
     start_time: datetime | None = None
@@ -106,6 +107,7 @@ class CanonicalJob(CanonicalBaseModel):
     id: str | None = None
     name: str
     parent_id: str | None = None
+    timeline_order: int | None = None
     state: str | None = None
     result: str | None = None
     start_time: datetime | None = None
@@ -119,6 +121,12 @@ class CanonicalTask(CanonicalBaseModel):
     name: str
     parent_id: str | None = None
     type: str | None = None
+    task_definition: str | None = None
+    description: str | None = None
+    command: str | None = None
+    input_signals: dict[str, str] = Field(default_factory=dict)
+    log_summary: str | None = None
+    timeline_order: int | None = None
     state: str | None = None
     result: str | None = None
     start_time: datetime | None = None

@@ -108,6 +108,7 @@
   "106": "test_runtime_identity_docs_contract.py",
   "107": "normalized_words",
   "108": "test_normalize_endpoint_returns_expected_summary",
+  "109": "validate_env.py",
   "110": "AGENTS.md",
   "111": "__init__.py",
   "112": "__init__.py",
@@ -125,5 +126,8 @@
   "124": "ado-dod-agent",
   "125": "smoke_docker_build.ps1",
   "126": "__init__.py",
-  "127": "__init__.py"
+  "127": "__init__.py",
+  "128": "test_credentials.py",
+  "129": ".__init__",
+  "130": ".get_token"
 }

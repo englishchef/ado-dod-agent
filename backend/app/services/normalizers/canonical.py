@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from collections.abc import Sequence
 from datetime import UTC, datetime
 from typing import Any
@@ -378,6 +379,33 @@ def _record_duration(
     return start_time, finish_time, _duration_seconds(start_time, finish_time)
 
 
+def _timeline_input_signals(record: dict[str, Any]) -> dict[str, str]:
+    """Keep only classification-relevant timeline inputs; never expose them in field text."""
+
+    inputs = _as_dict(record.get("inputs"))
+    allowed = {
+        "solution",
+        "solutionname",
+        "solutionpath",
+        "package",
+        "packagepath",
+        "environment",
+        "environmenttarget",
+        "targetenvironment",
+        "command",
+        "script",
+        "inlinescript",
+        "clicommand",
+    }
+    return {
+        str(key): value.strip()
+        for key, raw_value in inputs.items()
+        if re.sub(r"[^a-z]", "", str(key).lower()) in allowed
+        and isinstance(raw_value, str)
+        and (value := raw_value.strip())
+    }
+
+
 def _normalize_timeline_and_signals(
     raw_timeline: Any,
 ) -> tuple[
@@ -417,6 +445,7 @@ def _normalize_timeline_and_signals(
                 CanonicalStage(
                     id=_as_str(record.get("id")),
                     name=name,
+                    timeline_order=index,
                     state=_as_str(record.get("state")),
                     result=_as_str(record.get("result")),
                     start_time=start_time,
@@ -433,6 +462,7 @@ def _normalize_timeline_and_signals(
                     id=_as_str(record.get("id")),
                     name=name,
                     parent_id=_as_str(record.get("parentId")),
+                    timeline_order=index,
                     state=_as_str(record.get("state")),
                     result=_as_str(record.get("result")),
                     start_time=start_time,
@@ -443,12 +473,36 @@ def _normalize_timeline_and_signals(
             )
             continue
 
+        task_metadata = _as_dict(record.get("task"))
+        input_signals = _timeline_input_signals(record)
+        command = next(
+            (
+                value
+                for key, value in input_signals.items()
+                if re.sub(r"[^a-z]", "", key.lower())
+                in {"command", "script", "inlinescript", "clicommand"}
+            ),
+            _as_str(record.get("command")),
+        )
         tasks.append(
             CanonicalTask(
                 id=_as_str(record.get("id")),
                 name=name,
                 parent_id=_as_str(record.get("parentId")),
                 type=_as_str(record.get("type")),
+                task_definition=(
+                    _as_str(task_metadata.get("name"))
+                    or _as_str(record.get("identifier"))
+                    or _as_str(record.get("refName"))
+                ),
+                description=_as_str(record.get("description")),
+                command=command,
+                input_signals=input_signals,
+                log_summary=(
+                    _as_str(record.get("logSummary"))
+                    or _as_str(record.get("currentOperation"))
+                ),
+                timeline_order=index,
                 state=_as_str(record.get("state")),
                 result=_as_str(record.get("result")),
                 start_time=start_time,

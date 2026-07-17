@@ -282,9 +282,9 @@ def test_risk_repair_replaces_repeated_backout_steps_with_brief_mitigation() -> 
 def test_backout_uses_uat_solution_and_configuration_reverse_steps() -> None:
     backout = str(_repair(_evidence())["backout_plan"])
 
-    assert "Redeploy the previously validated solution" in backout
-    assert "Apply the prior solution state" in backout
-    assert "Restore the prior application configuration" in backout
+    assert "Apply the prior solution version and complete the solution rollback" in backout
+    assert backout.count("complete the solution rollback") == 1
+    assert "Restore the previous configuration settings" in backout
     assert "Validate that the Contact Center ASAC application" in backout
     assert "Get Base Solution Versions" not in backout
     assert "pipeline" not in backout.lower()

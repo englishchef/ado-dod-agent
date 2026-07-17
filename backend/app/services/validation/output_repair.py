@@ -8,11 +8,12 @@ from difflib import SequenceMatcher
 from typing import Any
 
 from backend.app.services.evidence.bucket_3_selection import (
+    backout_step_for_action,
     deployment_action_kind,
     display_application_name,
     environment_priority,
     format_backout_minutes,
-    is_deployment_activity_name,
+    is_non_deployment_stage_name,
     normalize_application_candidate,
     round_up_backout_minutes,
 )
@@ -101,11 +102,19 @@ _RATIONALE_TERMS = (
 )
 _BACKOUT_DELIVERY_METADATA_PATTERNS = (
     *_DELIVERY_DETAIL_PATTERNS,
-    re.compile(r"\b(?:artifact|branch|build|commit|pipeline|version)\b", re.IGNORECASE),
+    re.compile(r"\b(?:artifact|branch|build|commit|pipeline)\b", re.IGNORECASE),
     re.compile(r"\bAzure\s+DevOps\b", re.IGNORECASE),
     re.compile(r"\bversion\s+(?:number\s+)?v?\d+(?:\.\d+){1,3}\b", re.IGNORECASE),
     re.compile(r"\bv?\d+\.\d+(?:\.\d+){1,2}(?:[-+][A-Za-z0-9.-]+)?\b", re.IGNORECASE),
     re.compile(r"\blast known stable build\b", re.IGNORECASE),
+    re.compile(
+        r"\b[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-"
+        r"[89ab][0-9a-f]{3}-[0-9a-f]{12}\b",
+        re.IGNORECASE,
+    ),
+    re.compile(r"https?://\S+", re.IGNORECASE),
+    re.compile(r"\b(?:pac\s+solution|powershell|pwsh|cmd(?:\.exe)?|bash)\b", re.IGNORECASE),
+    re.compile(r"(?:[A-Za-z]:\\|/(?:home|usr|var|opt|tmp)/)\S+", re.IGNORECASE),
     re.compile(
         r"\b(?:stakeholder|implementation team)\s+"
         r"(?:coordination|communication|review)",
@@ -129,6 +138,14 @@ _BACKOUT_DURATION_LINE_RE = re.compile(
     r"(?im)^\s*Estimated backout time\s*:\s*.+$"
 )
 _BACKOUT_STEP_LINE_RE = re.compile(r"(?m)^\s*(?:\d+[.)]|[-*])\s+\S+")
+_BACKOUT_ACTION_CLAIM_PATTERNS: dict[str, re.Pattern[str]] = {
+    "configuration_change": re.compile(r"\bconfig(?:uration)?\b", re.IGNORECASE),
+    "infrastructure_change": re.compile(r"\binfrastructure\b|\bIaC\b", re.IGNORECASE),
+    "database_change": re.compile(r"\b(?:database|schema|migration)\b", re.IGNORECASE),
+    "service_restart": re.compile(r"\brestart\b", re.IGNORECASE),
+    "customization_publish": re.compile(r"\bcustomizations?\b", re.IGNORECASE),
+    "package_deployment": re.compile(r"\bpackage\b", re.IGNORECASE),
+}
 _RESILIENCY_BOOL_FIELDS = (
     "active_active",
     "rolling_deployment",
@@ -196,6 +213,30 @@ def detect_backout_delivery_metadata_leakage(text: str) -> bool:
     return any(pattern.search(candidate) for pattern in _BACKOUT_DELIVERY_METADATA_PATTERNS)
 
 
+def detect_unsupported_backout_step(text: str, evidence_bundle: dict[str, Any]) -> bool:
+    """Return whether the field claims a technical rollback action absent from derivation."""
+
+    bucket = bucket_3_evidence(evidence_bundle)
+    derivation = _dict_value(bucket.get("backout_step_derivation"))
+    actions = {
+        str(action)
+        for action in derivation.get("normalized_actions", [])
+        if isinstance(action, str)
+    }
+    if not actions:
+        uat_deployment = _dict_value(bucket.get("uat_deployment"))
+        actions = {
+            kind
+            for item in uat_deployment.get("activities", [])
+            if isinstance(item, dict)
+            and (kind := deployment_action_kind(str(item.get("name") or ""))) is not None
+        }
+    return any(
+        action not in actions and pattern.search(text)
+        for action, pattern in _BACKOUT_ACTION_CLAIM_PATTERNS.items()
+    )
+
+
 def expected_backout_duration_statement(evidence_bundle: dict[str, Any]) -> str:
     """Return an evidence-grounded, practically rounded backout duration statement."""
 
@@ -254,7 +295,9 @@ def _best_lower_environment_stage_duration(bucket: dict[str, Any]) -> float | No
         if not isinstance(candidate, dict):
             continue
         environment = str(candidate.get("normalized_environment") or "")
-        if environment in {"", "PRODUCTION"} or not candidate.get("deployment_activities"):
+        if environment in {"", "PRODUCTION"}:
+            continue
+        if is_non_deployment_stage_name(str(candidate.get("stage_name") or "")):
             continue
         result = re.sub(r"[^a-z]", "", str(candidate.get("result") or "").lower())
         state = re.sub(r"[^a-z]", "", str(candidate.get("state") or "").lower())
@@ -444,6 +487,7 @@ def _repair_backout_plan(generated_text: str, evidence_bundle: dict[str, Any]) -
         has_operational_steps
         and len(normalized_words(generated_text)) <= 120
         and not detect_backout_delivery_metadata_leakage(generated_text)
+        and not detect_unsupported_backout_step(generated_text, evidence_bundle)
     ):
         without_duration = _BACKOUT_DURATION_LINE_RE.sub("", generated_text).strip()
         return f"{without_duration}\n\n{expected_duration}"
@@ -452,56 +496,39 @@ def _repair_backout_plan(generated_text: str, evidence_bundle: dict[str, Any]) -
 
 def _build_backout_plan(evidence_bundle: dict[str, Any]) -> str:
     bucket = bucket_3_evidence(evidence_bundle)
-    uat_deployment = _dict_value(bucket.get("uat_deployment"))
-    activity_names = [
-        str(item.get("name") or "")
-        for item in uat_deployment.get("activities", [])
-        if isinstance(item, dict)
-        and is_deployment_activity_name(str(item.get("name") or ""))
+    derivation = _dict_value(bucket.get("backout_step_derivation"))
+    normalized_actions = [
+        str(action)
+        for action in derivation.get("normalized_actions", [])
+        if isinstance(action, str) and backout_step_for_action(action)
     ]
+    if not normalized_actions:
+        uat_deployment = _dict_value(bucket.get("uat_deployment"))
+        normalized_actions = [
+            kind
+            for item in uat_deployment.get("activities", [])
+            if isinstance(item, dict)
+            and (kind := deployment_action_kind(str(item.get("name") or ""))) is not None
+        ]
     application = _business_readable_application(bucket)
-    steps = _backout_steps_for_actions(activity_names, application)
+    steps = _backout_steps_for_actions(normalized_actions, application)
     lines = [f"{index}. {step}" for index, step in enumerate(steps, start=1)]
     lines.append("")
     lines.append(expected_backout_duration_statement(evidence_bundle))
     return "\n".join(lines)
 
 
-def _backout_steps_for_actions(activity_names: list[str], application: str) -> list[str]:
-    action_kinds = {
-        kind for name in activity_names if (kind := deployment_action_kind(name)) is not None
-    }
+def _backout_steps_for_actions(action_kinds: list[str], application: str) -> list[str]:
     steps = ["Stop or pause the production deployment."]
-    reverse_actions: list[str] = []
-    if "solution_upgrade" in action_kinds:
-        reverse_actions.append(
-            "Redeploy the previously validated solution used before this change."
-        )
-        reverse_actions.append("Apply the prior solution state to restore the production behavior.")
-    if "solution_import" in action_kinds:
-        reverse_actions.append("Import the previously validated solution used before this change.")
-    if "solution_deploy" in action_kinds:
-        reverse_actions.append(
-            "Redeploy the previously validated solution used before this change."
-        )
-    if "application_deploy" in action_kinds:
-        reverse_actions.append("Redeploy the previously validated application state.")
-    if "package_deploy" in action_kinds:
-        reverse_actions.append("Reinstall the previously validated application package.")
-    if "customization_publish" in action_kinds:
-        reverse_actions.append("Restore and publish the prior application customizations.")
-    if "configuration_apply" in action_kinds:
-        reverse_actions.append(
-            "Restore the prior application configuration."
-        )
-    if "database_deploy" in action_kinds:
-        reverse_actions.append("Reverse the database deployment actions applied by this change.")
-    if "infrastructure_deploy" in action_kinds:
-        reverse_actions.append("Restore the prior infrastructure configuration.")
-    if "service_restart" in action_kinds:
-        reverse_actions.append("Restart the impacted application service after restoration.")
+    reverse_actions = [
+        step
+        for action in action_kinds
+        if action != "deployment_validation" and (step := backout_step_for_action(action))
+    ]
     if not reverse_actions:
-        reverse_actions.append("Restore the application to its pre-change state.")
+        reverse_actions.append(
+            "Restore the previously validated version of the affected application or solution."
+        )
     steps.extend(_dedupe_text(reverse_actions))
     steps.append(f"Validate that the {application} and its affected workflows operate normally.")
     return _dedupe_text(steps)

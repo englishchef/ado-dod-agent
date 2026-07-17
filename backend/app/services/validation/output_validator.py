@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from datetime import datetime
 from typing import Any, Literal
 
 from pydantic import ValidationError
@@ -23,6 +24,7 @@ from backend.app.services.validation.output_repair import (
     bucket_3_claim_evidence_text,
     detect_backout_delivery_metadata_leakage,
     detect_delivery_detail_leakage,
+    detect_unsupported_backout_step,
     expected_backout_duration_statement,
     has_explicit_planned_impact_evidence,
     has_high_risk_evidence,
@@ -306,12 +308,32 @@ def validate_bucket_3_fields(
                 )
             )
         if detect_backout_delivery_metadata_leakage(backout):
+            issues.extend(
+                [
+                    _issue(
+                        "warning",
+                        "BACKOUT_PLAN_DELIVERY_METADATA_LEAKAGE",
+                        "Backout plan contains build, version, branch, pipeline, artifact, or "
+                        "delivery metadata.",
+                        "backout_plan",
+                        bucket,
+                    ),
+                    _issue(
+                        "warning",
+                        "BACKOUT_STEP_RAW_METADATA_LEAKAGE",
+                        "Backout steps contain raw task metadata, a command, path, GUID, or URL.",
+                        "backout_plan",
+                        bucket,
+                    ),
+                ]
+            )
+        if detect_unsupported_backout_step(backout, evidence):
             issues.append(
                 _issue(
                     "warning",
-                    "BACKOUT_PLAN_DELIVERY_METADATA_LEAKAGE",
-                    "Backout plan contains build, version, branch, pipeline, artifact, or "
-                    "delivery metadata.",
+                    "BACKOUT_UNSUPPORTED_STEP",
+                    "Backout plan contains a technical action not supported by normalized "
+                    "deployment evidence.",
                     "backout_plan",
                     bucket,
                 )
@@ -644,6 +666,24 @@ def _backout_derivation_issues(
             )
         )
 
+    rejected_stages = evidence.get("rejected_stages")
+    if isinstance(rejected_stages, list) and any(
+        isinstance(item, dict)
+        and "does not contain a valid application or solution deployment activity"
+        in str(item.get("reason") or "").lower()
+        for item in rejected_stages
+    ):
+        issues.append(
+            _issue(
+                "warning",
+                "LOWER_ENVIRONMENT_STAGE_REJECTED_FOR_EMPTY_ACTIVITIES",
+                "A lower-environment stage was rejected only because deployment activities "
+                "were empty.",
+                "backout_plan",
+                bucket,
+            )
+        )
+
     selected_environment = str(derivation.get("selected_environment") or "")
     selected_stage_name = str(derivation.get("selected_stage_name") or "")
     if (
@@ -696,38 +736,68 @@ def _backout_derivation_issues(
 
     candidates = evidence.get("environment_candidates")
     if isinstance(candidates, list):
-        selected_candidate: dict[str, Any] | None = None
         uat_available = False
         for candidate in candidates:
             if not isinstance(candidate, dict):
                 continue
-            if candidate.get("selected") is True:
-                selected_candidate = candidate
             if (
                 candidate.get("normalized_environment") == "UAT"
-                and candidate.get("duration_seconds")
-                and candidate.get("deployment_activities")
+                and _candidate_has_valid_timing(candidate)
                 and _successful_candidate(candidate)
             ):
                 uat_available = True
-        if selected_candidate is not None and not selected_candidate.get(
-            "deployment_activities"
-        ):
-            issues.append(
-                _issue(
-                    "warning",
-                    "BACKOUT_DURATION_WRONG_STAGE_TYPE",
-                    "Selected stage does not contain a valid deployment activity.",
-                    "backout_plan",
-                    bucket,
-                )
-            )
         if selected_environment != "UAT" and uat_available:
             issues.append(
                 _issue(
                     "warning",
                     "BACKOUT_DURATION_WRONG_STAGE_TYPE",
                     "A valid UAT deployment stage exists and must take priority.",
+                    "backout_plan",
+                    bucket,
+                )
+            )
+    step_derivation = evidence.get("backout_step_derivation")
+    if isinstance(step_derivation, dict):
+        if step_derivation.get("recursive_traversal_used") is not True or (
+            step_derivation.get("traversal_complete") is False
+        ):
+            issues.append(
+                _issue(
+                    "warning",
+                    "BACKOUT_RECURSIVE_TRAVERSAL_INCOMPLETE",
+                    "Backout action discovery must recursively inspect all selected-stage "
+                    "descendants.",
+                    "backout_plan",
+                    bucket,
+                )
+            )
+        ignored_tasks = step_derivation.get("ignored_tasks")
+        if isinstance(ignored_tasks, list) and any(
+            isinstance(item, dict)
+            and item.get("classification") == "unknown"
+            and re.search(
+                r"\b(?:deploy|deployment|import|upgrade|apply|install|publish|restart)\b",
+                str(item.get("raw_name") or ""),
+                re.IGNORECASE,
+            )
+            for item in ignored_tasks
+        ):
+            issues.append(
+                _issue(
+                    "warning",
+                    "BACKOUT_DEPLOYMENT_ACTION_NOT_CLASSIFIED",
+                    "A deployment-like descendant could not be deterministically classified.",
+                    "backout_plan",
+                    bucket,
+                )
+            )
+        if step_derivation.get("fallback_used") is True:
+            issues.append(
+                _issue(
+                    "info",
+                    "BACKOUT_GENERIC_FALLBACK_USED",
+                    "No evidence-supported deployment action was found, so generic restoration "
+                    "steps were used.",
                     "backout_plan",
                     bucket,
                 )
@@ -747,6 +817,21 @@ def _successful_candidate(candidate: dict[str, Any]) -> bool:
         or state in {"completed", "inprogress"}
         or bool(candidate.get("finish_time"))
     )
+
+
+def _candidate_has_valid_timing(candidate: dict[str, Any]) -> bool:
+    start = candidate.get("start_time")
+    finish = candidate.get("finish_time")
+    if isinstance(start, datetime) and isinstance(finish, datetime):
+        return finish > start
+    if not isinstance(start, str) or not isinstance(finish, str):
+        return False
+    try:
+        start_time = datetime.fromisoformat(start.replace("Z", "+00:00"))
+        finish_time = datetime.fromisoformat(finish.replace("Z", "+00:00"))
+    except ValueError:
+        return False
+    return finish_time > start_time
 
 
 def _expected_application_display(evidence_bundle: dict[str, Any]) -> str | None:

@@ -31,6 +31,7 @@ class TraceabilityReport(TraceabilityBaseModel):
     field_traceability: dict[str, FieldTraceability] = Field(default_factory=dict)
     environment_candidates: list[dict[str, Any]] = Field(default_factory=list)
     backout_time_derivation: dict[str, Any] | None = None
+    backout_step_derivation: dict[str, Any] | None = None
     rejected_stages: list[dict[str, Any]] = Field(default_factory=list)
     deployment_activities_used: list[dict[str, Any]] = Field(default_factory=list)
     application_resolution: dict[str, Any] | None = None

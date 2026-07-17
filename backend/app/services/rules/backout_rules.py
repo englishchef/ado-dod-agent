@@ -117,13 +117,19 @@ def evaluate_backout_rules(
         rules.append(
             _rule(
                 issue.code,
-                "review"
-                if issue.code
-                in {
-                    "BACKOUT_PLAN_DELIVERY_METADATA_LEAKAGE",
-                    "BACKOUT_DURATION_UNSUPPORTED",
-                }
-                else "warning",
+                (
+                    "info"
+                    if issue.code == "BACKOUT_GENERIC_FALLBACK_USED"
+                    else "review"
+                    if issue.code
+                    in {
+                        "BACKOUT_PLAN_DELIVERY_METADATA_LEAKAGE",
+                        "BACKOUT_STEP_RAW_METADATA_LEAKAGE",
+                        "BACKOUT_DURATION_UNSUPPORTED",
+                        "BACKOUT_UNSUPPORTED_STEP",
+                    }
+                    else "warning"
+                ),
                 issue.message,
                 "backout_plan",
             )

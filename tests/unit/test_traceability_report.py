@@ -36,6 +36,23 @@ def _evidence_bundle() -> dict[str, object]:
                 "source_duration_seconds": 558,
                 "final_estimate_minutes": 10,
             },
+            "backout_step_derivation": {
+                "recursive_traversal_used": True,
+                "selected_stage_id": "uat-stage",
+                "descendant_count": 3,
+                "max_depth": 3,
+                "normalized_actions": ["solution_upgrade"],
+                "source_tasks": [
+                    {
+                        "raw_name": "Upgrade Solution",
+                        "detected_action": "solution_upgrade",
+                        "depth": 3,
+                        "ancestor_names": ["UAT", "Deploy", "Nested"],
+                    }
+                ],
+                "ignored_tasks": [],
+                "fallback_used": False,
+            },
             "rejected_stages": [
                 {"stage_name": "Production", "reason": "Production stages cannot be used."}
             ],
@@ -122,6 +139,9 @@ def test_traceability_report_persists_bucket_3_derivations() -> None:
 
     assert report.backout_time_derivation is not None
     assert report.backout_time_derivation["source_duration_seconds"] == 558
+    assert report.backout_step_derivation is not None
+    assert report.backout_step_derivation["recursive_traversal_used"] is True
+    assert report.backout_step_derivation["source_tasks"][0]["depth"] == 3
     assert report.environment_candidates[0]["selected"] is True
     assert report.rejected_stages[0]["stage_name"] == "Production"
     assert report.deployment_activities_used[0]["name"].startswith("Upgrade Solution")

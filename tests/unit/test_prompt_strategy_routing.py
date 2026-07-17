@@ -64,6 +64,10 @@ def test_uat_activity_evidence_selects_standard_bucket_3_strategy() -> None:
         _risk("medium"),
         {
             "bucket_3": {
+                "backout_step_derivation": {
+                    "normalized_actions": ["solution_deployment"],
+                    "fallback_used": False,
+                },
                 "uat_deployment": {
                     "activities": [{"name": "Deploy solution package"}],
                 }
@@ -72,3 +76,21 @@ def test_uat_activity_evidence_selects_standard_bucket_3_strategy() -> None:
     )
 
     assert result.bucket_3_strategy == "bucket_3_standard"
+
+
+def test_selected_stage_without_normalized_actions_uses_conservative_wording() -> None:
+    result = select_prompt_strategy(
+        _quality(),
+        _risk("medium"),
+        {
+            "bucket_3": {
+                "backout_time_derivation": {"selected_environment": "UAT"},
+                "backout_step_derivation": {
+                    "normalized_actions": [],
+                    "fallback_used": True,
+                },
+            }
+        },
+    )
+
+    assert result.bucket_3_strategy == "bucket_3_conservative_rollback"

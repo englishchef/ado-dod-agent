@@ -9,6 +9,7 @@ from backend.app.models.routing import (
     PromptStrategySelection,
     RiskTierAssessment,
 )
+from backend.app.services.evidence.bucket_3_selection import deployment_action_kind
 
 
 def select_prompt_strategy(
@@ -42,20 +43,28 @@ def select_prompt_strategy(
             reasons.append("Bucket 2 has no collected test results.")
 
     bucket_3 = _as_dict(evidence_bundle.get("bucket_3"))
-    uat_deployment = _as_dict(bucket_3.get("uat_deployment"))
-    uat_activities = _as_list(uat_deployment.get("activities"))
+    backout_step_derivation = _as_dict(bucket_3.get("backout_step_derivation"))
+    normalized_actions = _as_list(backout_step_derivation.get("normalized_actions"))
+    if not normalized_actions:
+        uat_deployment = _as_dict(bucket_3.get("uat_deployment"))
+        normalized_actions = [
+            kind
+            for item in _as_list(uat_deployment.get("activities"))
+            if isinstance(item, dict)
+            and (kind := deployment_action_kind(str(item.get("name") or ""))) is not None
+        ]
     if risk_tier.risk_tier == "high":
         bucket_3_strategy = "bucket_3_high_risk"
         reasons.append("Risk tier is high, so high-risk rollback/risk wording is required.")
-    elif not uat_activities:
+    elif not normalized_actions or backout_step_derivation.get("fallback_used") is True:
         bucket_3_strategy = "bucket_3_conservative_rollback"
         reasons.append(
-            "UAT deployment activity evidence is missing, so conservative rollback wording "
-            "is required."
+            "No normalized deployment action supports a specific reversal step, so "
+            "conservative rollback wording is required."
         )
     else:
         bucket_3_strategy = "bucket_3_standard"
-        reasons.append("UAT deployment activity evidence supports the standard Bucket 3 prompt.")
+        reasons.append("Normalized deployment actions support the standard Bucket 3 prompt.")
 
     return PromptStrategySelection(
         bucket_1_strategy=bucket_1_strategy,

@@ -23,26 +23,11 @@ from backend.app.graphs.nodes import (
     validate_input_node,
     validate_outputs_node,
 )
-from backend.app.graphs.state import (
-    GRAPH_STATE_KEYS,
-    LEGACY_LARGE_STATE_KEYS,
-    STATUS_FAILED,
-    DodGraphState,
-)
+from backend.app.graphs.state import STATUS_FAILED, DodGraphState
 from backend.app.services.observability.langsmith_tracing import trace_event
-from backend.app.utils.config import get_settings
-from backend.app.utils.logging import get_logger
-from backend.app.utils.state_serialization import (
-    GraphStateUnsupportedTypeError,
-    GraphStateValidationError,
-    exception_type_chain,
-    graph_state_diagnostics,
-    validate_graph_state,
-)
 
 Route = Literal["failed", "continue"]
 NodeFunc = Callable[[DodGraphState], DodGraphState]
-logger = get_logger(__name__)
 
 
 def build_dod_workflow() -> Any:
@@ -133,12 +118,8 @@ def build_dod_workflow() -> Any:
 def run_dod_workflow(input_data: dict[str, Any]) -> dict[str, Any]:
     """Run the Phase 7A workflow and return final graph state."""
 
-    from backend.app.utils.state_serialization import to_json_safe
-
-    normalized_input = to_json_safe(input_data, context="input")
     initial_state: DodGraphState = {
-        "input": dict(normalized_input),
-        "current_phase": "input",
+        "input": dict(input_data),
         "artifact_paths": {},
         "phase_durations_ms": {},
         "warnings": [],
@@ -175,88 +156,12 @@ def _route_failed_or_continue(state: DodGraphState) -> Route:
 
 def _timed_node(phase_name: str, node: NodeFunc) -> NodeFunc:
     def run(state: DodGraphState) -> DodGraphState:
-        if phase_name == "canonical_normalization":
-            _log_state_diagnostics(state, f"{phase_name}_before")
-        try:
-            _validate_checkpoint_state(state, f"{phase_name}_before")
-        except GraphStateValidationError as exc:
-            return _compact_guard_failure(state, phase_name, exc, duration_ms=0)
-
         started = perf_counter()
-        try:
-            update = node(state)
-        except Exception as exc:
-            logger.error(
-                "graph node raised phase=%s exception_chain=%s",
-                phase_name,
-                exception_type_chain(exc),
-            )
-            validation_error = GraphStateUnsupportedTypeError(
-                f"{phase_name} raised before producing a checkpoint-safe update.",
-                {
-                    "phase": phase_name,
-                    "exception_type": type(exc).__name__,
-                    **graph_state_diagnostics(state, phase=phase_name),
-                },
-            )
-            duration_ms = int((perf_counter() - started) * 1000)
-            return _compact_guard_failure(state, phase_name, validation_error, duration_ms)
+        update = node(state)
         duration_ms = int((perf_counter() - started) * 1000)
-        if not isinstance(update, dict):
-            invalid_update = GraphStateUnsupportedTypeError(
-                f"{phase_name} returned a non-dictionary state update.",
-                {
-                    "phase": phase_name,
-                    "python_type": type(update).__name__,
-                },
-            )
-            return _compact_guard_failure(state, phase_name, invalid_update, duration_ms)
-        unexpected_keys = sorted(str(key) for key in update if key not in GRAPH_STATE_KEYS)
-        if unexpected_keys:
-            invalid_update = GraphStateUnsupportedTypeError(
-                f"{phase_name} returned keys outside the graph-state contract.",
-                {
-                    "phase": phase_name,
-                    "unexpected_keys": unexpected_keys,
-                },
-            )
-            return _compact_guard_failure(state, phase_name, invalid_update, duration_ms)
         phase_durations = dict(state.get("phase_durations_ms") or {})
         phase_durations[phase_name] = duration_ms
-        merged: DodGraphState = {
-            **update,
-            "phase_durations_ms": phase_durations,
-            "current_phase": str(update.get("current_phase") or phase_name),
-        }
-        projected: DodGraphState = {**state, **merged}
-        try:
-            diagnostics = _validate_checkpoint_state(projected, f"{phase_name}_after")
-        except GraphStateValidationError as exc:
-            return _compact_guard_failure(state, phase_name, exc, duration_ms)
-        if diagnostics.get("warning_required"):
-            warning = {
-                "severity": "warning",
-                "code": "GRAPH_STATE_SIZE_WARNING",
-                "message": "Graph state exceeded the configured warning threshold.",
-                "phase": phase_name,
-                "diagnostics": _compact_diagnostics(diagnostics),
-            }
-            warnings = list(merged.get("warnings") or state.get("warnings") or [])
-            if not any(
-                isinstance(item, dict)
-                and item.get("code") == "GRAPH_STATE_SIZE_WARNING"
-                and item.get("phase") == phase_name
-                for item in warnings
-            ):
-                warnings.append(warning)
-            merged["warnings"] = warnings
-            projected = {**state, **merged}
-            try:
-                _validate_checkpoint_state(projected, f"{phase_name}_after_warning")
-            except GraphStateValidationError as exc:
-                return _compact_guard_failure(state, phase_name, exc, duration_ms)
-        if phase_name == "canonical_normalization":
-            _log_state_diagnostics(projected, f"{phase_name}_after")
+        merged: DodGraphState = {**update, "phase_durations_ms": phase_durations}
         trace_event(
             f"dod {phase_name}",
             {
@@ -274,122 +179,3 @@ def _timed_node(phase_name: str, node: NodeFunc) -> NodeFunc:
         return merged
 
     return run
-
-
-def _validate_checkpoint_state(state: DodGraphState, context: str) -> dict[str, Any]:
-    settings = get_settings()
-    return validate_graph_state(
-        state,
-        context=context,
-        warn_bytes=int(settings.DOD_GRAPH_STATE_WARN_BYTES),
-        max_bytes=int(settings.DOD_GRAPH_STATE_MAX_BYTES),
-    )
-
-
-def _compact_guard_failure(
-    state: DodGraphState,
-    phase: str,
-    exc: GraphStateValidationError,
-    duration_ms: int,
-) -> DodGraphState:
-    phase_durations = _safe_phase_durations(state.get("phase_durations_ms"))
-    phase_durations[phase] = max(0, duration_ms)
-    diagnostics = _compact_diagnostics(exc.diagnostics)
-    failure: DodGraphState = {
-        "run_id": state.get("run_id") if isinstance(state.get("run_id"), str) else None,
-        "build_id": state.get("build_id") if isinstance(state.get("build_id"), int) else 0,
-        "organization": (
-            state.get("organization") if isinstance(state.get("organization"), str) else ""
-        ),
-        "project": state.get("project") if isinstance(state.get("project"), str) else "",
-        "mode": state.get("mode") if isinstance(state.get("mode"), str) else "local",
-        "correlation_id": (
-            state.get("correlation_id")
-            if isinstance(state.get("correlation_id"), str)
-            else None
-        ),
-        "requested_by": None,
-        "source": None,
-        "metadata": {},
-        "confidence_threshold": 0.70,
-        "high_risk_confidence_threshold": 0.85,
-        "input": {},
-        "status": STATUS_FAILED,
-        "current_phase": phase,
-        "started_at": state.get("started_at")
-        if isinstance(state.get("started_at"), str)
-        else None,
-        "completed_at": None,
-        "raw_summary": None,
-        "canonical_summary": None,
-        "evidence_summary": None,
-        "bucket_3_summary": None,
-        "validation_summary": None,
-        "evidence_quality": None,
-        "prompt_strategy": None,
-        "risk_tier": None,
-        "routing_decisions": [],
-        "service_now_payload": None,
-        "confidence": None,
-        "rule_evaluation_summary": None,
-        "artifact_paths": _safe_artifact_paths(state.get("artifact_paths")),
-        "phase_durations_ms": phase_durations,
-        "warnings": [],
-        "errors": [
-            {
-                "severity": "error",
-                "code": exc.code,
-                "message": "Graph state could not be persisted safely.",
-                "phase": phase,
-                "diagnostics": diagnostics,
-            }
-        ],
-    }
-    for key in LEGACY_LARGE_STATE_KEYS:
-        failure[key] = {} if key in {"run_summary", "routing_decisions_bundle"} else None
-    return failure
-
-
-def _compact_diagnostics(diagnostics: dict[str, Any] | Any) -> dict[str, Any]:
-    payload = diagnostics if isinstance(diagnostics, dict) else {}
-    return {
-        key: payload[key]
-        for key in (
-            "phase",
-            "context",
-            "python_type",
-            "state_size_bytes",
-            "warn_bytes",
-            "max_bytes",
-            "largest_keys",
-            "non_serializable_paths",
-            "unexpected_keys",
-            "exception_type",
-        )
-        if key in payload
-    }
-
-
-def _safe_artifact_paths(value: Any) -> dict[str, str]:
-    if not isinstance(value, dict):
-        return {}
-    return {
-        str(key): item
-        for key, item in list(value.items())[:100]
-        if isinstance(key, str) and isinstance(item, str)
-    }
-
-
-def _safe_phase_durations(value: Any) -> dict[str, int]:
-    if not isinstance(value, dict):
-        return {}
-    return {
-        str(key): int(item)
-        for key, item in value.items()
-        if isinstance(key, str) and isinstance(item, int | float) and not isinstance(item, bool)
-    }
-
-
-def _log_state_diagnostics(state: DodGraphState, phase: str) -> None:
-    diagnostics = graph_state_diagnostics(state, phase=phase)
-    logger.info("graph_state_diagnostics=%s", diagnostics)

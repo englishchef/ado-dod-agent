@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from types import SimpleNamespace
 from typing import Any, cast
 
 from backend.app.graphs import nodes
@@ -114,7 +113,7 @@ class FakeStore:
         return self.save_output_json(build_id, "run_summary.json", payload)
 
 
-def test_collect_raw_metadata_node_updates_summary_and_paths(monkeypatch: MonkeyPatch) -> None:
+def test_collect_raw_metadata_node_updates_result_and_paths(monkeypatch: MonkeyPatch) -> None:
     async def fake_collect(_: Any) -> dict[str, Any]:
         return {
             "status": "completed",
@@ -127,10 +126,9 @@ def test_collect_raw_metadata_node_updates_summary_and_paths(monkeypatch: Monkey
 
     state = nodes.collect_raw_metadata_node(_base_state())
 
-    raw_summary = state["raw_summary"]
-    assert isinstance(raw_summary, dict)
-    assert raw_summary["status"] == "completed"
-    assert "raw_result" not in state
+    raw_result = state["raw_result"]
+    assert isinstance(raw_result, dict)
+    assert raw_result["status"] == "completed"
     assert state["artifact_paths"]["raw_bundle"].endswith("raw_bundle.json")
 
 
@@ -151,31 +149,12 @@ def test_collect_raw_metadata_node_sets_failed_on_hard_error(monkeypatch: Monkey
     assert state["errors"][0]["phase"] == "collect_raw"
 
 
-def test_normalize_canonical_node_updates_canonical_summary(monkeypatch: MonkeyPatch) -> None:
-    class FakeCanonicalDocument(FakeModel):
-        build_id = 7
-        run_context = SimpleNamespace(
-            pipeline_name="pipeline",
-            source_branch="refs/heads/main",
-            source_version="abc",
-        )
-        change_context = SimpleNamespace(work_items=[], commits=[], pull_requests=[])
-        execution_context = SimpleNamespace(stages=[], jobs=[], tasks=[], artifacts=[])
-        quality_context = SimpleNamespace(test_runs=[], failed_tests=[])
-        risk_context = SimpleNamespace(
-            config_change_detected=False,
-            database_change_detected=False,
-            infrastructure_change_detected=False,
-            dependency_change_detected=False,
-            feature_flag_change_detected=False,
-        )
-        normalization_metadata = SimpleNamespace(warnings=["some_raw_sections_missing"])
-
+def test_normalize_canonical_node_updates_canonical_result(monkeypatch: MonkeyPatch) -> None:
     monkeypatch.setattr(nodes, "LocalJsonStore", FakeStore)
     monkeypatch.setattr(
         nodes,
         "normalize_raw_bundle",
-        lambda *_, **__: FakeCanonicalDocument(
+        lambda *_, **__: FakeModel(
             {
                 "build_id": 7,
                 "normalization_metadata": {"warnings": ["some_raw_sections_missing"]},
@@ -185,41 +164,23 @@ def test_normalize_canonical_node_updates_canonical_summary(monkeypatch: MonkeyP
 
     state = nodes.normalize_canonical_node(_base_state())
 
-    canonical_summary = state["canonical_summary"]
-    assert isinstance(canonical_summary, dict)
-    assert canonical_summary["build_id"] == 7
-    assert "canonical_result" not in state
+    canonical_result = state["canonical_result"]
+    assert isinstance(canonical_result, dict)
+    assert canonical_result["build_id"] == 7
     assert state["artifact_paths"]["canonical"].endswith("canonical.json")
     assert state["warnings"][0]["phase"] == "normalize"
 
 
-def test_build_evidence_buckets_node_updates_evidence_summary(monkeypatch: MonkeyPatch) -> None:
+def test_build_evidence_buckets_node_updates_evidence_result(monkeypatch: MonkeyPatch) -> None:
     class FakeCanonical:
         @staticmethod
         def model_validate(_: Any) -> object:
             return object()
 
     class FakeBundle:
-        build_id = 7
         bucket_1 = FakeModel({"bucket": 1})
-        bucket_1.service_context = SimpleNamespace(pipeline_name="pipeline")
-        bucket_1.work_item_evidence = []
-        bucket_1.commit_evidence = []
-        bucket_1.pull_request_evidence = []
-        bucket_1.evidence_gaps = []
         bucket_2 = FakeModel({"bucket": 2})
-        bucket_2.stage_evidence = []
-        bucket_2.job_evidence = []
-        bucket_2.task_evidence = []
-        bucket_2.artifact_evidence = []
-        bucket_2.test_evidence = SimpleNamespace(total_runs=0, failed_tests=0)
-        bucket_2.evidence_gaps = []
         bucket_3 = FakeModel({"bucket": 3})
-        bucket_3.artifact_evidence = []
-        bucket_3.failed_or_warning_evidence = []
-        bucket_3.risk_signals = []
-        bucket_3.evidence_gaps = []
-        generation_metadata = SimpleNamespace(truncation_applied=False)
 
         def model_dump(self, mode: str = "python") -> dict[str, Any]:
             return {
@@ -234,24 +195,25 @@ def test_build_evidence_buckets_node_updates_evidence_summary(monkeypatch: Monke
     monkeypatch.setattr(nodes, "CanonicalDodDocument", FakeCanonical)
     monkeypatch.setattr(nodes, "build_evidence_bundle", lambda *_, **__: FakeBundle())
 
-    state = nodes.build_evidence_buckets_node(_state())
+    state = nodes.build_evidence_buckets_node(_state(canonical_result={"x": "y"}))
 
-    evidence_summary = state["evidence_summary"]
-    assert isinstance(evidence_summary, dict)
-    assert evidence_summary["build_id"] == 7
-    assert "evidence_result" not in state
+    evidence_result = state["evidence_result"]
+    assert isinstance(evidence_result, dict)
+    assert evidence_result["build_id"] == 7
     assert state["artifact_paths"]["evidence_bundle"].endswith("evidence_bundle.json")
     assert len(state["warnings"]) == 2
 
 
-def test_generate_llm_outputs_node_updates_output_references(monkeypatch: MonkeyPatch) -> None:
+def test_generate_llm_outputs_node_updates_outputs(monkeypatch: MonkeyPatch) -> None:
     outputs = _fake_llm_outputs()
     monkeypatch.setattr(nodes, "LocalJsonStore", FakeStore)
     monkeypatch.setattr(nodes, "generate_all_buckets", lambda **_: outputs)
 
     state = nodes.generate_llm_outputs_node(_state(evidence_result={}))
 
-    assert "llm_outputs" not in state
+    llm_outputs = state["llm_outputs"]
+    assert isinstance(llm_outputs, dict)
+    assert llm_outputs["build_id"] == 7
     assert state["artifact_paths"]["llm_outputs"].endswith("llm_outputs.json")
 
 
@@ -292,7 +254,7 @@ def test_validate_outputs_node_stores_payload_and_confidence(monkeypatch: Monkey
     assert state["artifact_paths"]["traceability_report"].endswith("traceability_report.json")
 
 
-def test_evaluate_rules_node_stores_rule_evaluation_summary(monkeypatch: MonkeyPatch) -> None:
+def test_evaluate_rules_node_stores_rule_evaluation(monkeypatch: MonkeyPatch) -> None:
     monkeypatch.setattr(nodes, "LocalJsonStore", FakeStore)
 
     state = nodes.evaluate_rules_node(
@@ -314,10 +276,9 @@ def test_evaluate_rules_node_stores_rule_evaluation_summary(monkeypatch: MonkeyP
     )
 
     assert state["artifact_paths"]["rule_evaluation"].endswith("rule_evaluation.json")
-    rule_evaluation = state.get("rule_evaluation_summary")
+    rule_evaluation = state.get("rule_evaluation")
     assert isinstance(rule_evaluation, dict)
-    assert rule_evaluation["triggered_rule_count"] >= 0
-    assert "rule_evaluation" not in state
+    assert rule_evaluation["summary"]["triggered_rule_count"] >= 0
 
 
 def test_assemble_run_result_status_rules(monkeypatch: MonkeyPatch, tmp_path: Path) -> None:

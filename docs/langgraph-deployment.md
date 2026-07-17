@@ -149,75 +149,10 @@ The graph returns the shared `DoDRunOutput` shape with these top-level fields:
 The graph output prefers summary fields and artifact references. Full artifacts
 remain stored separately and are not expanded by default.
 
-## LangGraph state versus artifact storage
-
-LangGraph state is a compact orchestration contract. It carries run identity,
-status, the current phase, small summaries, ServiceNow/confidence output, and
-artifact references. Full Azure DevOps raw bundles, canonical documents,
-evidence bundles, recursive timeline derivation, LLM output, validation output,
-traceability reports, rule evaluations, routing bundles, and run summaries
-belong in `ArtifactStore`.
-
-A node that needs a full document loads it from `ArtifactStore`, processes it,
-persists the next document, and returns only a reference plus a bounded summary:
-
-```json
-{
-  "bucket_3_summary": {
-    "selected_environment": "UAT",
-    "selected_stage_name": "UAT",
-    "estimated_backout_minutes": 90,
-    "normalized_actions": ["solution_upgrade"],
-    "fallback_used": false
-  },
-  "artifact_paths": {
-    "canonical": "cosmos://<run-id>/canonical",
-    "evidence_bundle": "cosmos://<run-id>/evidence_bundle",
-    "bucket_3_rollback_risk": "cosmos://<run-id>/bucket_3_rollback_risk"
-  }
-}
-```
-
-The Bucket 3 artifact retains detailed `backout_step_derivation` evidence,
-including recursive descendant/source/ignored-task details. Traversal queues,
-visited sets, parent-child indexes, raw logs, SDK objects, and that detailed
-derivation are not graph-state fields. This changes checkpoint shape only; it
-does not change recursive traversal or Bucket 3 selection and backout rules.
-
-All node updates must be plain dictionaries containing strict JSON-compatible
-values. Datetimes, UUIDs, Pydantic models, dataclasses, enums, and paths must be
-normalized before they enter state. Clients, credentials, responses,
-generators, coroutines, exception instances, and arbitrary custom classes are
-rejected. Diagnostics report only key paths, Python types, serialized sizes,
-and the largest state keys; they never print values or raw artifacts.
-
-Application-level state guards are configurable independently of platform
-limits:
-
-```text
-DOD_GRAPH_STATE_WARN_BYTES=262144
-DOD_GRAPH_STATE_MAX_BYTES=1048576
-```
-
-The warning threshold records `GRAPH_STATE_SIZE_WARNING`. The hard limit and
-unsupported values fail with compact `GRAPH_STATE_TOO_LARGE`,
-`GRAPH_STATE_NOT_JSON_SERIALIZABLE`, or `GRAPH_STATE_UNSUPPORTED_TYPE` errors
-before the node update is returned for checkpointing. These defaults are
-safeguards, not documented enterprise platform limits.
-
-The enterprise LangGraph PostgreSQL/PGCosmos checkpoint store is separate from
-the DoD Cosmos artifact container. A `PGCosmosError` can be a platform
-persistence failure and is not automatically proof of invalid application
-state. First check the safe state-shape/size diagnostics. If state is JSON-safe
-and within the configured hard limit, platform checkpoint retry remains owned
-by the enterprise LangGraph runtime; the application does not add retries that
-could duplicate artifacts or repeat LLM calls.
-
 ## Local Smoke Test
 
 ```powershell
 python scripts/smoke_langgraph_dod_import.py
-python scripts/smoke_graph_state_serialization.py
 ```
 
 Expected output includes:
@@ -226,10 +161,8 @@ Expected output includes:
 dod graph compiled successfully
 ```
 
-These smoke tests import and compile the graph and validate representative
-compact state. They do not execute a DoD run and do not call Azure DevOps,
-Azure OpenAI, Cosmos DB, enterprise LangGraph, LangSmith, Key Vault, or
-ServiceNow.
+The smoke test only imports and compiles the graph. It does not execute a DoD
+run and does not call Azure DevOps, Azure OpenAI, Cosmos DB, or ServiceNow.
 
 Container readiness smoke test:
 

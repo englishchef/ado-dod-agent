@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-import json
 from datetime import UTC, datetime
 from typing import Any, cast
 
@@ -26,9 +25,9 @@ from backend.app.models.routing import (
 )
 from backend.app.models.run_summary import DodRunSummary, RunIssue
 from backend.app.services.collectors.raw_metadata import collect_raw_metadata
-from backend.app.services.evidence.builder import build_evidence_bundle, build_evidence_summary
+from backend.app.services.evidence.builder import build_evidence_bundle
 from backend.app.services.llm.generator import generate_all_buckets
-from backend.app.services.normalizers.canonical import build_canonical_summary, normalize_raw_bundle
+from backend.app.services.normalizers.canonical import normalize_raw_bundle
 from backend.app.services.routing.decision_recorder import make_decision
 from backend.app.services.routing.evidence_quality import assess_evidence_quality
 from backend.app.services.routing.prompt_strategy import select_prompt_strategy
@@ -38,14 +37,6 @@ from backend.app.services.storage.local_store import LocalJsonStore
 from backend.app.services.storage.storage_factory import get_storage_store
 from backend.app.services.validation.service import validate_and_assemble_outputs
 from backend.app.utils.config import get_settings
-from backend.app.utils.logging import get_logger
-from backend.app.utils.state_serialization import (
-    classify_platform_persistence_failure,
-    exception_type_chain,
-    graph_state_diagnostics,
-)
-
-logger = get_logger(__name__)
 
 
 def validate_input_node(state: DodGraphState) -> DodGraphState:
@@ -61,7 +52,6 @@ def validate_input_node(state: DodGraphState) -> DodGraphState:
     high_risk_confidence_threshold = _coerce_float(
         input_data.get("high_risk_confidence_threshold")
     )
-    metadata = input_data.get("metadata") if isinstance(input_data.get("metadata"), dict) else {}
     run_id = _coerce_str(state.get("run_id")) or f"dod-run-{_timestamp_for_id(now)}-{build_id or 0}"
 
     errors: list[dict[str, Any]] = []
@@ -78,43 +68,26 @@ def validate_input_node(state: DodGraphState) -> DodGraphState:
         "organization": organization or "",
         "project": project or "",
         "mode": mode,
-        "correlation_id": _optional_text(
-            state.get("correlation_id") or input_data.get("correlation_id")
-        ),
-        "requested_by": _optional_text(
-            state.get("requested_by") or input_data.get("requested_by")
-        ),
-        "source": _optional_text(state.get("source") or input_data.get("source")),
-        "metadata": dict(metadata),
         "confidence_threshold": confidence_threshold
         or float(get_settings().DOD_CONFIDENCE_THRESHOLD),
         "high_risk_confidence_threshold": high_risk_confidence_threshold
         or float(get_settings().DOD_HIGH_RISK_CONFIDENCE_THRESHOLD),
-        "input": _compact_input(input_data),
+        "input": input_data,
         "status": STATUS_FAILED if errors else STATUS_STARTED,
-        "current_phase": "input",
         "started_at": _iso(now),
         "completed_at": state.get("completed_at"),
-        "raw_summary": state.get("raw_summary"),
-        "canonical_summary": state.get("canonical_summary"),
-        "evidence_summary": state.get("evidence_summary"),
-        "bucket_3_summary": state.get("bucket_3_summary"),
-        "validation_summary": state.get("validation_summary"),
-        "rule_evaluation_summary": state.get("rule_evaluation_summary"),
-        "raw_result": None,
-        "canonical_result": None,
-        "evidence_result": None,
+        "raw_result": state.get("raw_result"),
+        "canonical_result": state.get("canonical_result"),
+        "evidence_result": state.get("evidence_result"),
         "evidence_quality": state.get("evidence_quality"),
         "prompt_strategy": state.get("prompt_strategy"),
         "risk_tier": state.get("risk_tier"),
         "routing_decisions": list(state.get("routing_decisions") or []),
-        "llm_outputs": None,
-        "validated_output": None,
+        "llm_outputs": state.get("llm_outputs"),
+        "validated_output": state.get("validated_output"),
         "service_now_payload": state.get("service_now_payload"),
         "confidence": state.get("confidence"),
-        "rule_evaluation": None,
-        "run_summary": {},
-        "routing_decisions_bundle": {},
+        "rule_evaluation": state.get("rule_evaluation"),
         "artifact_paths": dict(state.get("artifact_paths") or {}),
         "warnings": list(state.get("warnings") or []),
         "errors": [*list(state.get("errors") or []), *errors],
@@ -136,13 +109,7 @@ def collect_raw_metadata_node(state: DodGraphState) -> DodGraphState:
         )
         result = asyncio.run(collect_raw_metadata(request))
     except Exception as exc:
-        return _with_exception(
-            state,
-            "raw_collection_failed",
-            "Raw metadata collection could not be completed.",
-            "collect_raw",
-            exc,
-        )
+        return _with_error(state, "raw_collection_failed", str(exc), "collect_raw")
 
     payload = _model_dump(result)
     artifact_paths = _merge_artifact_paths(state, _extract_paths(payload.get("artifact_paths")))
@@ -179,12 +146,11 @@ def collect_raw_metadata_node(state: DodGraphState) -> DodGraphState:
         else state.get("status", STATUS_STARTED)
     )
     return {
-        "raw_summary": _raw_collection_summary(payload),
+        "raw_result": payload,
         "artifact_paths": artifact_paths,
         "warnings": warnings,
         "errors": errors,
         "status": status,
-        "current_phase": "collect_raw",
     }
 
 
@@ -212,13 +178,7 @@ def normalize_canonical_node(state: DodGraphState) -> DodGraphState:
             canonical_payload,
         )
     except Exception as exc:
-        return _with_exception(
-            state,
-            "canonical_normalization_failed",
-            "Canonical normalization could not be completed.",
-            "normalize",
-            exc,
-        )
+        return _with_error(state, "canonical_normalization_failed", str(exc), "normalize")
 
     warnings = [
         *list(state.get("warnings") or []),
@@ -229,10 +189,9 @@ def normalize_canonical_node(state: DodGraphState) -> DodGraphState:
         ),
     ]
     return {
-        "canonical_summary": build_canonical_summary(document, canonical_path),
+        "canonical_result": canonical_payload,
         "artifact_paths": _merge_artifact_paths(state, {"canonical": canonical_path}),
         "warnings": warnings,
-        "current_phase": "normalize",
     }
 
 
@@ -248,7 +207,7 @@ def build_evidence_buckets_node(state: DodGraphState) -> DodGraphState:
             "canonical",
             store.normalized_path(state["build_id"], "canonical.json"),
         )
-        canonical_payload = store.load_canonical(state["build_id"])
+        canonical_payload = state.get("canonical_result") or store.load_canonical(state["build_id"])
         canonical_document = CanonicalDodDocument.model_validate(canonical_payload)
         bundle = build_evidence_bundle(canonical_document, source_path=canonical_path)
         evidence_payload = bundle.model_dump(mode="json")
@@ -273,13 +232,7 @@ def build_evidence_buckets_node(state: DodGraphState) -> DodGraphState:
             evidence_payload,
         )
     except Exception as exc:
-        return _with_exception(
-            state,
-            "evidence_generation_failed",
-            "Evidence generation could not be completed.",
-            "evidence",
-            exc,
-        )
+        return _with_error(state, "evidence_generation_failed", str(exc), "evidence")
 
     metadata = evidence_payload.get("generation_metadata", {})
     warnings = [
@@ -295,19 +248,8 @@ def build_evidence_buckets_node(state: DodGraphState) -> DodGraphState:
             "evidence_gap",
         ),
     ]
-    evidence_summary = build_evidence_summary(
-        bundle,
-        {
-            "bucket_1_change_intent": bucket_1_path,
-            "bucket_2_execution_validation": bucket_2_path,
-            "bucket_3_rollback_risk": bucket_3_path,
-            "evidence_bundle": evidence_bundle_path,
-        },
-    )
-    evidence_summary.pop("output_paths", None)
     return {
-        "evidence_summary": evidence_summary,
-        "bucket_3_summary": _bucket_3_state_summary(evidence_payload),
+        "evidence_result": evidence_payload,
         "artifact_paths": _merge_artifact_paths(
             state,
             {
@@ -318,7 +260,6 @@ def build_evidence_buckets_node(state: DodGraphState) -> DodGraphState:
             },
         ),
         "warnings": warnings,
-        "current_phase": "evidence",
     }
 
 
@@ -332,13 +273,7 @@ def assess_evidence_quality_node(state: DodGraphState) -> DodGraphState:
         evidence_bundle = _load_evidence_bundle_from_state(state)
         assessment = assess_evidence_quality(evidence_bundle)
     except Exception as exc:
-        return _with_exception(
-            state,
-            "evidence_quality_assessment_failed",
-            "Evidence quality assessment could not be completed.",
-            "routing",
-            exc,
-        )
+        return _with_error(state, "evidence_quality_assessment_failed", str(exc), "routing")
 
     decisions = list(state.get("routing_decisions") or [])
     decisions.extend(
@@ -372,7 +307,6 @@ def assess_evidence_quality_node(state: DodGraphState) -> DodGraphState:
     return {
         "evidence_quality": assessment.model_dump(mode="json"),
         "routing_decisions": decisions,
-        "current_phase": "routing",
     }
 
 
@@ -385,13 +319,7 @@ def assess_risk_tier_node(state: DodGraphState) -> DodGraphState:
     try:
         assessment = assess_risk_tier(_load_evidence_bundle_from_state(state))
     except Exception as exc:
-        return _with_exception(
-            state,
-            "risk_tier_assessment_failed",
-            "Risk-tier assessment could not be completed.",
-            "routing",
-            exc,
-        )
+        return _with_error(state, "risk_tier_assessment_failed", str(exc), "routing")
 
     decisions = list(state.get("routing_decisions") or [])
     decisions.append(
@@ -405,11 +333,7 @@ def assess_risk_tier_node(state: DodGraphState) -> DodGraphState:
             )
         )
     )
-    return {
-        "risk_tier": assessment.model_dump(mode="json"),
-        "routing_decisions": decisions,
-        "current_phase": "routing",
-    }
+    return {"risk_tier": assessment.model_dump(mode="json"), "routing_decisions": decisions}
 
 
 def select_prompt_strategy_node(state: DodGraphState) -> DodGraphState:
@@ -427,13 +351,7 @@ def select_prompt_strategy_node(state: DodGraphState) -> DodGraphState:
             evidence_bundle=_load_evidence_bundle_from_state(state),
         )
     except Exception as exc:
-        return _with_exception(
-            state,
-            "prompt_strategy_selection_failed",
-            "Prompt strategy selection could not be completed.",
-            "routing",
-            exc,
-        )
+        return _with_error(state, "prompt_strategy_selection_failed", str(exc), "routing")
 
     decisions = list(state.get("routing_decisions") or [])
     for bucket_name, selected in (
@@ -451,11 +369,7 @@ def select_prompt_strategy_node(state: DodGraphState) -> DodGraphState:
                 )
             )
         )
-    return {
-        "prompt_strategy": strategy.model_dump(mode="json"),
-        "routing_decisions": decisions,
-        "current_phase": "routing",
-    }
+    return {"prompt_strategy": strategy.model_dump(mode="json"), "routing_decisions": decisions}
 
 
 def generate_llm_outputs_node(state: DodGraphState) -> DodGraphState:
@@ -467,13 +381,7 @@ def generate_llm_outputs_node(state: DodGraphState) -> DodGraphState:
     try:
         return _generate_llm_outputs_once(state)
     except Exception as exc:
-        return _with_exception(
-            state,
-            "llm_generation_failed",
-            "Bucket generation could not be completed.",
-            "llm_generation",
-            exc,
-        )
+        return _with_error(state, "llm_generation_failed", str(exc), "llm_generation")
 
 
 def validate_outputs_node(state: DodGraphState) -> DodGraphState:
@@ -492,8 +400,10 @@ def validate_outputs_node(state: DodGraphState) -> DodGraphState:
             "evidence_bundle",
             store.evidence_path(state["build_id"], "evidence_bundle.json"),
         )
-        llm_outputs = store.load_llm_outputs(state["build_id"])
-        evidence_bundle = store.load_evidence_bundle(state["build_id"])
+        llm_outputs = state.get("llm_outputs") or store.load_llm_outputs(state["build_id"])
+        evidence_bundle = state.get("evidence_result") or store.load_evidence_bundle(
+            state["build_id"]
+        )
         validated = validate_and_assemble_outputs(
             build_id=state["build_id"],
             llm_outputs=llm_outputs,
@@ -525,13 +435,7 @@ def validate_outputs_node(state: DodGraphState) -> DodGraphState:
             traceability_report,
         )
     except Exception as exc:
-        return _with_exception(
-            state,
-            "validation_failed",
-            "Output validation could not be completed.",
-            "validation",
-            exc,
-        )
+        return _with_error(state, "validation_failed", str(exc), "validation")
 
     warnings = list(state.get("warnings") or [])
     errors = list(state.get("errors") or [])
@@ -600,13 +504,9 @@ def validate_outputs_node(state: DodGraphState) -> DodGraphState:
             )
         )
     return {
+        "validated_output": validated_payload,
         "service_now_payload": service_now_payload,
         "confidence": confidence,
-        "validation_summary": {
-            "validation_issue_count": validation_issue_count,
-            "validation_error_count": validation_error_count,
-            "repair_applied": _repair_applied(validated_payload),
-        },
         "artifact_paths": _merge_artifact_paths(
             state,
             {
@@ -624,7 +524,6 @@ def validate_outputs_node(state: DodGraphState) -> DodGraphState:
             if has_validation_errors
             else state.get("status", STATUS_STARTED)
         ),
-        "current_phase": "validation",
     }
 
 
@@ -711,11 +610,13 @@ def evaluate_rules_node(state: DodGraphState) -> DodGraphState:
         )
         evaluation = evaluate_rules(
             build_id=build_id,
-            evidence_bundle=store.load_evidence_bundle(build_id),
+            evidence_bundle=state.get("evidence_result") or store.load_evidence_bundle(build_id),
             service_now_payload=state.get("service_now_payload")
             or store.load_service_now_payload(build_id),
-            llm_outputs=_load_optional_dict(store.load_llm_outputs, build_id),
-            validated_output=_load_optional_dict(store.load_validated_output, build_id),
+            llm_outputs=state.get("llm_outputs")
+            or _load_optional_dict(store.load_llm_outputs, build_id),
+            validated_output=state.get("validated_output")
+            or _load_optional_dict(store.load_validated_output, build_id),
             confidence=state.get("confidence")
             or _load_optional_dict(store.load_confidence, build_id),
             routing_decisions=_routing_context_from_state(state)
@@ -734,13 +635,7 @@ def evaluate_rules_node(state: DodGraphState) -> DodGraphState:
         evaluation_payload = evaluation.model_dump(mode="json")
         rule_evaluation_path = store.save_rule_evaluation_json(build_id, evaluation_payload)
     except Exception as exc:
-        return _with_exception(
-            state,
-            "rule_evaluation_failed",
-            "Rule evaluation could not be completed.",
-            "rule_evaluation",
-            exc,
-        )
+        return _with_error(state, "rule_evaluation_failed", str(exc), "rule_evaluation")
 
     warnings = list(state.get("warnings") or [])
     errors = list(state.get("errors") or [])
@@ -771,7 +666,7 @@ def evaluate_rules_node(state: DodGraphState) -> DodGraphState:
         status = STATUS_COMPLETED_WITH_WARNINGS
 
     return {
-        "rule_evaluation_summary": _rule_evaluation_state_summary(evaluation_payload),
+        "rule_evaluation": evaluation_payload,
         "artifact_paths": _merge_artifact_paths(
             state,
             {"rule_evaluation": rule_evaluation_path},
@@ -779,7 +674,6 @@ def evaluate_rules_node(state: DodGraphState) -> DodGraphState:
         "warnings": warnings,
         "errors": errors,
         "status": status,
-        "current_phase": "rule_evaluation",
     }
 
 
@@ -804,7 +698,7 @@ def persist_routing_decisions_node(state: DodGraphState) -> DodGraphState:
             state,
             {"routing_decisions": routing_path},
         ),
-        "current_phase": "routing_persistence",
+        "routing_decisions_bundle": bundle.model_dump(mode="json"),
     }
 
 
@@ -821,15 +715,12 @@ def persist_run_summary_node(state: DodGraphState) -> DodGraphState:
     artifact_paths = dict(state.get("artifact_paths") or {})
     artifact_paths.setdefault("run_summary", store.run_summary_path(build_id))
     input_data = dict(state.get("input") or {})
-    input_metadata = (
-        dict(state.get("metadata") or {})
-        if isinstance(state.get("metadata"), dict)
-        else dict(input_data.get("metadata") or {})
+    input_metadata = dict(input_data.get("metadata") or {})
+    rule_evaluation = (
+        state.get("rule_evaluation") if isinstance(state.get("rule_evaluation"), dict) else {}
     )
     rule_summary = (
-        state.get("rule_evaluation_summary")
-        if isinstance(state.get("rule_evaluation_summary"), dict)
-        else {}
+        rule_evaluation.get("summary") if isinstance(rule_evaluation.get("summary"), dict) else {}
     )
     confidence = state.get("confidence") if isinstance(state.get("confidence"), dict) else {}
 
@@ -839,9 +730,7 @@ def persist_run_summary_node(state: DodGraphState) -> DodGraphState:
         organization=str(state.get("organization") or ""),
         project=str(state.get("project") or ""),
         correlation_id=_optional_text(
-            state.get("correlation_id")
-            or input_data.get("correlation_id")
-            or input_metadata.get("correlation_id")
+            input_data.get("correlation_id") or input_metadata.get("correlation_id")
         ),
         pipeline_id=_optional_text(
             input_data.get("pipeline_id") or input_metadata.get("pipeline_id")
@@ -854,21 +743,17 @@ def persist_run_summary_node(state: DodGraphState) -> DodGraphState:
         ),
         branch=_optional_text(input_data.get("branch") or input_metadata.get("branch")),
         requested_by=_optional_text(
-            state.get("requested_by")
-            or input_data.get("requested_by")
-            or input_metadata.get("requested_by")
+            input_data.get("requested_by") or input_metadata.get("requested_by")
         ),
-        source=_optional_text(
-            state.get("source") or input_data.get("source") or input_metadata.get("source")
-        ),
+        source=_optional_text(input_data.get("source") or input_metadata.get("source")),
         mode=_optional_text(state.get("mode") or input_data.get("mode")),
         status=str(state.get("status") or STATUS_FAILED),
         rule_recommended_status=_optional_text(rule_summary.get("recommended_status")),
         highest_rule_severity=_optional_text(rule_summary.get("highest_severity")),
         final_confidence=_optional_float(confidence.get("overall")),
         test_completeness_score=(
-            dict(rule_summary["test_completeness_score"])
-            if isinstance(rule_summary.get("test_completeness_score"), dict)
+            dict(rule_evaluation["test_completeness_score"])
+            if isinstance(rule_evaluation.get("test_completeness_score"), dict)
             else None
         ),
         storage_backend=get_settings().DOD_STORAGE_BACKEND,
@@ -889,7 +774,7 @@ def persist_run_summary_node(state: DodGraphState) -> DodGraphState:
     return {
         "artifact_paths": artifact_paths,
         "completed_at": _iso(completed_at) if completed_at else state.get("completed_at"),
-        "current_phase": "completed",
+        "run_summary": summary.model_dump(mode="json"),
     }
 
 
@@ -899,7 +784,7 @@ def _generate_llm_outputs_once(state: DodGraphState) -> DodGraphState:
         "evidence_bundle",
         store.evidence_path(state["build_id"], "evidence_bundle.json"),
     )
-    evidence_bundle = store.load_evidence_bundle(state["build_id"])
+    evidence_bundle = state.get("evidence_result") or store.load_evidence_bundle(state["build_id"])
     retry_decisions: list[dict[str, Any]] = []
     outputs = generate_all_buckets(
         build_id=state["build_id"],
@@ -928,6 +813,7 @@ def _generate_llm_outputs_once(state: DodGraphState) -> DodGraphState:
     llm_outputs_path = store.save_output_json(state["build_id"], "llm_outputs.json", llm_payload)
 
     return {
+        "llm_outputs": llm_payload,
         "artifact_paths": _merge_artifact_paths(
             state,
             {
@@ -938,18 +824,13 @@ def _generate_llm_outputs_once(state: DodGraphState) -> DodGraphState:
             },
         ),
         "routing_decisions": [*list(state.get("routing_decisions") or []), *retry_decisions],
-        "current_phase": "llm_generation",
     }
 
 
 def _load_evidence_bundle_from_state(state: DodGraphState) -> dict[str, Any]:
-    """Load full evidence from ArtifactStore; graph state carries only its reference."""
-
-    # Compatibility for direct legacy node callers only. Production nodes no
-    # longer emit this key, so normal graph execution always follows the store path.
-    legacy_evidence = state.get("evidence_result")
-    if isinstance(legacy_evidence, dict):
-        return legacy_evidence
+    evidence = state.get("evidence_result")
+    if isinstance(evidence, dict):
+        return evidence
     store = _storage_store(state)
     payload = store.load_evidence_bundle(state["build_id"])
     return payload if isinstance(payload, dict) else {}
@@ -961,80 +842,6 @@ def _load_optional_dict(load: Any, build_id: int) -> dict[str, Any] | None:
     except FileNotFoundError:
         return None
     return payload if isinstance(payload, dict) else None
-
-
-def _compact_input(input_data: dict[str, Any]) -> dict[str, Any]:
-    """Retain only small orchestration options after input normalization."""
-
-    compact: dict[str, Any] = {}
-    for key in ("confidence_threshold", "high_risk_confidence_threshold"):
-        if key in input_data:
-            compact[key] = input_data[key]
-    return compact
-
-
-def _raw_collection_summary(payload: dict[str, Any]) -> dict[str, Any]:
-    summary = payload.get("summary") if isinstance(payload.get("summary"), dict) else {}
-    collector_statuses = payload.get("collector_statuses")
-    status_counts: dict[str, int] = {}
-    if isinstance(collector_statuses, list):
-        for item in collector_statuses:
-            status = item.get("status") if isinstance(item, dict) else None
-            if isinstance(status, str):
-                status_counts[status] = status_counts.get(status, 0) + 1
-    return {
-        "status": str(payload.get("status") or "unknown"),
-        "collection_run_id": _optional_text(payload.get("collection_run_id")),
-        "collected_at": _optional_text(payload.get("collected_at")),
-        "counts": {str(key): value for key, value in summary.items() if isinstance(value, int)},
-        "collector_status_counts": status_counts,
-        "error_count": len(payload.get("errors") or [])
-        if isinstance(payload.get("errors"), list)
-        else 0,
-    }
-
-
-def _bucket_3_state_summary(evidence_payload: dict[str, Any]) -> dict[str, Any]:
-    bucket_3 = evidence_payload.get("bucket_3")
-    if not isinstance(bucket_3, dict):
-        return {}
-    timing = bucket_3.get("backout_time_derivation")
-    timing = timing if isinstance(timing, dict) else {}
-    steps = bucket_3.get("backout_step_derivation")
-    steps = steps if isinstance(steps, dict) else {}
-    actions = steps.get("normalized_actions")
-    normalized_actions = [str(item) for item in actions] if isinstance(actions, list) else []
-    return {
-        "selected_environment": timing.get("selected_environment"),
-        "selected_stage_name": timing.get("selected_stage_name"),
-        "estimated_backout_minutes": timing.get("final_estimate_minutes"),
-        "normalized_actions": normalized_actions,
-        "fallback_used": bool(steps.get("fallback_used")),
-        "recursive_traversal_used": bool(steps.get("recursive_traversal_used")),
-        "descendant_count": _non_negative_int(steps.get("descendant_count")),
-        "max_depth": _non_negative_int(steps.get("max_depth")),
-        "source_task_count": len(steps.get("source_tasks") or [])
-        if isinstance(steps.get("source_tasks"), list)
-        else 0,
-        "ignored_task_count": len(steps.get("ignored_tasks") or [])
-        if isinstance(steps.get("ignored_tasks"), list)
-        else 0,
-    }
-
-
-def _rule_evaluation_state_summary(evaluation_payload: dict[str, Any]) -> dict[str, Any]:
-    summary = evaluation_payload.get("summary")
-    compact = dict(summary) if isinstance(summary, dict) else {}
-    score = evaluation_payload.get("test_completeness_score")
-    if isinstance(score, dict):
-        compact["test_completeness_score"] = dict(score)
-    return compact
-
-
-def _non_negative_int(value: Any) -> int:
-    if isinstance(value, bool) or not isinstance(value, int | float):
-        return 0
-    return max(0, int(value))
 
 
 def _storage_store(state: DodGraphState | None = None) -> Any:
@@ -1083,13 +890,9 @@ def _on_bucket_retry(
                 make_decision(
                     "llm_generation",
                     f"{bucket_name}_retry",
-                    f"Retrying {bucket_name} after failed attempt {attempt}.",
+                    f"Retrying {bucket_name} after failed attempt {attempt}: {exc}",
                     "warning",
-                    {
-                        "bucket": bucket_name,
-                        "attempt": attempt,
-                        "exception_type": type(exc).__name__,
-                    },
+                    {"bucket": bucket_name, "attempt": attempt},
                 )
             )
         )
@@ -1103,37 +906,10 @@ def _model_or_none(model_type: Any, payload: Any) -> Any:
     return model_type.model_validate(payload)
 
 
-def _with_exception(
-    state: DodGraphState,
-    code: str,
-    message: str,
-    phase: str,
-    exc: BaseException,
-) -> DodGraphState:
-    diagnostics = graph_state_diagnostics(state, phase=phase)
-    settings = get_settings()
-    diagnostics["warn_bytes"] = int(settings.DOD_GRAPH_STATE_WARN_BYTES)
-    diagnostics["max_bytes"] = int(settings.DOD_GRAPH_STATE_MAX_BYTES)
-    classification = classify_platform_persistence_failure(exc, diagnostics)
-    safe_diagnostics = {
-        "exception_type": type(exc).__name__,
-        "state_size_bytes": diagnostics.get("state_size_bytes"),
-        **classification,
-    }
-    logger.error(
-        "graph node failed code=%s phase=%s exception_chain=%s state_diagnostics=%s",
-        code,
-        phase,
-        json.dumps(exception_type_chain(exc), separators=(",", ":")),
-        json.dumps(diagnostics, ensure_ascii=True, separators=(",", ":")),
-    )
+def _with_error(state: DodGraphState, code: str, message: str, phase: str) -> DodGraphState:
     return {
         "status": STATUS_FAILED,
-        "current_phase": phase,
-        "errors": [
-            *list(state.get("errors") or []),
-            _issue("error", code, message, phase, diagnostics=safe_diagnostics),
-        ],
+        "errors": [*list(state.get("errors") or []), _issue("error", code, message, phase)],
     }
 
 
@@ -1155,36 +931,22 @@ def _extract_paths(value: Any) -> dict[str, str]:
 def _collector_issue(payload: Any, phase: str) -> dict[str, Any]:
     if isinstance(payload, dict):
         collector = str(payload.get("collector", "collector"))
-        return _issue(
-            "warning",
-            f"{collector}_issue",
-            f"Collector {collector} reported an issue.",
-            phase,
-        )
-    return _issue("warning", "collector_issue", "A metadata collector reported an issue.", phase)
+        message = str(payload.get("message", "Collector issue."))
+        return _issue("warning", f"{collector}_issue", message, phase)
+    return _issue("warning", "collector_issue", str(payload), phase)
 
 
 def _warnings_from_strings(values: list[Any], phase: str, code: str) -> list[dict[str, Any]]:
     return [_issue("warning", code, str(value), phase) for value in values]
 
 
-def _issue(
-    severity: str,
-    code: str,
-    message: str,
-    phase: str | None,
-    *,
-    diagnostics: dict[str, Any] | None = None,
-) -> dict[str, Any]:
-    issue = {
+def _issue(severity: str, code: str, message: str, phase: str | None) -> dict[str, Any]:
+    return {
         "severity": severity,
         "code": code,
-        "message": message[:500] + ("...[TRUNCATED]" if len(message) > 500 else ""),
+        "message": message,
         "phase": phase,
     }
-    if diagnostics:
-        issue["diagnostics"] = diagnostics
-    return issue
 
 
 def _run_issue_from_dict(payload: dict[str, Any]) -> RunIssue:
@@ -1193,11 +955,6 @@ def _run_issue_from_dict(payload: dict[str, Any]) -> RunIssue:
         code=str(payload.get("code") or "unknown_issue"),
         message=str(payload.get("message") or payload.get("code") or "Issue recorded."),
         phase=payload.get("phase") if isinstance(payload.get("phase"), str) else None,
-        diagnostics=(
-            dict(payload["diagnostics"])
-            if isinstance(payload.get("diagnostics"), dict)
-            else None
-        ),
     )
 
 

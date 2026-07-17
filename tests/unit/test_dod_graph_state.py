@@ -20,6 +20,7 @@ def test_run_issue_serializes() -> None:
         "code": "gap",
         "message": "Missing PR.",
         "phase": "evidence",
+        "diagnostics": None,
     }
 
 
@@ -77,6 +78,25 @@ def test_normalize_dod_input_initializes_collections() -> None:
     assert state["artifact_paths"] == {}
     assert state["warnings"] == []
     assert state["errors"] == []
+
+
+def test_normalize_dod_input_clears_prior_output_on_retry() -> None:
+    state = normalize_dod_input(
+        {
+            "organization": "org",
+            "project": "proj",
+            "build_id": 123,
+            "service_now_payload": {"large": "old"},
+            "confidence": {"overall": 0.9},
+            "rule_evaluation_summary": {"recommended_status": "completed"},
+            "result": {"large": "old"},
+        }
+    )
+
+    assert state["service_now_payload"] is None
+    assert state["confidence"] is None
+    assert state["rule_evaluation_summary"] is None
+    assert state["result"] is None
 
 
 def test_normalize_dod_input_rejects_missing_organization() -> None:

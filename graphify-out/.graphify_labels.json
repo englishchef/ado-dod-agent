@@ -129,5 +129,8 @@
   "127": "__init__.py",
   "128": "test_credentials.py",
   "129": ".__init__",
-  "130": ".get_token"
+  "130": ".get_token",
+  "131": "test_smoke_azure_credentials.py",
+  "132": "test_normalize_endpoint_returns_expected_summary",
+  "133": "test_orchestration_storage_integration.py"
 }

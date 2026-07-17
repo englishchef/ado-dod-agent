@@ -15,6 +15,7 @@ class RunIssue(BaseModel):
     code: str
     message: str
     phase: str | None = None
+    diagnostics: dict[str, Any] | None = None
 
 
 class DodRunSummary(BaseModel):

@@ -35,8 +35,8 @@
     "semantic_hash": ""
   },
   "backend/app/core/enterprise_config.py": {
-    "mtime": 1782335399.243262,
-    "ast_hash": "b91486de633723cdb67ef9c8a9e9dce6",
+    "mtime": 1784315089.828894,
+    "ast_hash": "4b6bdec57202eb9d14145157c0897d77",
     "semantic_hash": ""
   },
   "backend/app/core/langgraph_api_key.py": {
@@ -50,28 +50,28 @@
     "semantic_hash": ""
   },
   "backend/app/graphs/dod_deployment_graph.py": {
-    "mtime": 1782171785.7266836,
-    "ast_hash": "abd746a4fe69ffdf9b1040126d2eca95",
+    "mtime": 1784316460.162509,
+    "ast_hash": "0185403d63c6ccd69aaea58422476739",
     "semantic_hash": ""
   },
   "backend/app/graphs/dod_deployment_state.py": {
-    "mtime": 1782011531.8592722,
-    "ast_hash": "7ab1382ec834132bf98bbe84bc77677b",
+    "mtime": 1784317324.705269,
+    "ast_hash": "89fd74ac7b12455dd46cbceca0c005ad",
     "semantic_hash": ""
   },
   "backend/app/graphs/nodes.py": {
-    "mtime": 1782172145.5436106,
-    "ast_hash": "659659a1c67fa42e120a4d2b63f50ac9",
+    "mtime": 1784316458.556249,
+    "ast_hash": "0c4d7d51fd3ffa319eaf10d02dd888b4",
     "semantic_hash": ""
   },
   "backend/app/graphs/state.py": {
-    "mtime": 1782171645.1186552,
-    "ast_hash": "8a5d0d4533beb3210adcefe2b00cd17e",
+    "mtime": 1784315048.6431463,
+    "ast_hash": "e995767da679061c97a6194921aeed60",
     "semantic_hash": ""
   },
   "backend/app/graphs/workflow.py": {
-    "mtime": 1782171672.504451,
-    "ast_hash": "a1c856fb8c99d03aa1815b4e19d37aab",
+    "mtime": 1784317351.4126515,
+    "ast_hash": "b3c92600fea5d1fe65eb0fa3bcd2b2f0",
     "semantic_hash": ""
   },
   "backend/app/models/__init__.py": {
@@ -90,8 +90,8 @@
     "semantic_hash": ""
   },
   "backend/app/models/dod_contracts.py": {
-    "mtime": 1782011531.8714821,
-    "ast_hash": "8808f9185f5e834a972fb1327dfb85cc",
+    "mtime": 1784315652.132416,
+    "ast_hash": "5a13afab5f09988b88a0f2495a7156ae",
     "semantic_hash": ""
   },
   "backend/app/models/evidence.py": {
@@ -130,8 +130,8 @@
     "semantic_hash": ""
   },
   "backend/app/models/run_summary.py": {
-    "mtime": 1782171697.574721,
-    "ast_hash": "50b201397384a943d62be27290c2441c",
+    "mtime": 1784315467.3057103,
+    "ast_hash": "8d24f669eeafbc6304cb92ab92ba0447",
     "semantic_hash": ""
   },
   "backend/app/models/traceability.py": {
@@ -350,8 +350,8 @@
     "semantic_hash": ""
   },
   "backend/app/services/orchestration/dod_run_service.py": {
-    "mtime": 1782171817.9517548,
-    "ast_hash": "99e9f043dc7db2ee8dc177cf0b807473",
+    "mtime": 1784315677.2049172,
+    "ast_hash": "bb3b517ab8103974b36f424be3c97343",
     "semantic_hash": ""
   },
   "backend/app/services/routing/__init__.py": {
@@ -485,8 +485,8 @@
     "semantic_hash": ""
   },
   "backend/app/utils/config.py": {
-    "mtime": 1782331407.059771,
-    "ast_hash": "8c029f926b10b15743a0997c7d505a85",
+    "mtime": 1784315088.6216066,
+    "ast_hash": "2fb5d7eeaf779fa26d45a680f0f4b085",
     "semantic_hash": ""
   },
   "backend/app/utils/constants.py": {
@@ -725,8 +725,8 @@
     "semantic_hash": ""
   },
   "scripts/smoke_langgraph_dod_import.py": {
-    "mtime": 1782011531.91981,
-    "ast_hash": "ae31b7018ce80b8fe954f6d0407ae7db",
+    "mtime": 1784316096.1149318,
+    "ast_hash": "0278fdebf130ed371ce7fc12a22d47e9",
     "semantic_hash": ""
   },
   "scripts/smoke_langgraph_health.py": {
@@ -910,18 +910,18 @@
     "semantic_hash": ""
   },
   "tests/unit/test_dod_graph_advanced_nodes.py": {
-    "mtime": 1779984727.6245134,
-    "ast_hash": "b3b4c87863c3096ebb7538976218885d",
+    "mtime": 1784315939.8860729,
+    "ast_hash": "48eab7b1631a30ee872cae83403f3af8",
     "semantic_hash": ""
   },
   "tests/unit/test_dod_graph_nodes.py": {
-    "mtime": 1780962672.3018003,
-    "ast_hash": "aed40aca62ed8ebd8ca96b78d00c2c2f",
+    "mtime": 1784316315.0612328,
+    "ast_hash": "c59a31562916f70cc229d03957d3db0a",
     "semantic_hash": ""
   },
   "tests/unit/test_dod_graph_state.py": {
-    "mtime": 1782011531.92581,
-    "ast_hash": "ee7e9f72673afaef8adb1eb918e06465",
+    "mtime": 1784317346.4210825,
+    "ast_hash": "3d6c21d1e4293cc7ed23d3019ce66a67",
     "semantic_hash": ""
   },
   "tests/unit/test_dod_graph_workflow.py": {
@@ -1305,8 +1305,8 @@
     "semantic_hash": ""
   },
   "docs/langgraph-deployment.md": {
-    "mtime": 1782335450.962173,
-    "ast_hash": "53fdc7103f4703fd16ff81b8821f6c68",
+    "mtime": 1784316131.5374827,
+    "ast_hash": "11f7a6052570575fa96905172a8d1329",
     "semantic_hash": ""
   },
   "docs/langsmith-observability.md": {
@@ -1322,6 +1322,36 @@
   "tests/unit/test_bucket_3_backout_derivation.py": {
     "mtime": 1784307544.706087,
     "ast_hash": "0599f6e7a25a2ae00f834283068f8add",
+    "semantic_hash": ""
+  },
+  "backend/app/utils/state_serialization.py": {
+    "mtime": 1784316457.791475,
+    "ast_hash": "a885512c85464cc9b878ecd8533b2a10",
+    "semantic_hash": ""
+  },
+  "scripts/smoke_graph_state_serialization.py": {
+    "mtime": 1784316179.9371977,
+    "ast_hash": "9bb8ca3b2fa505d3fc387f53f94a9b71",
+    "semantic_hash": ""
+  },
+  "tests/unit/test_bucket_3_state_compaction.py": {
+    "mtime": 1784315900.8855765,
+    "ast_hash": "9dc7d010dbfb3cdd77a4c533e442ee2f",
+    "semantic_hash": ""
+  },
+  "tests/unit/test_canonical_normalization_state.py": {
+    "mtime": 1784316528.8419216,
+    "ast_hash": "4af0c98be0ab0b0ce6dfc175b9efc3b0",
+    "semantic_hash": ""
+  },
+  "tests/unit/test_dod_graph_state_compaction.py": {
+    "mtime": 1784316553.9378068,
+    "ast_hash": "acc8f88197ed7fbdc998860ccf7e920c",
+    "semantic_hash": ""
+  },
+  "tests/unit/test_state_serialization.py": {
+    "mtime": 1784316528.1621683,
+    "ast_hash": "03a2170af97f5f938807e59a89dc2eb1",
     "semantic_hash": ""
   }
 }

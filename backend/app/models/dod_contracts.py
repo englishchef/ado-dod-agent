@@ -8,6 +8,8 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from backend.app.utils.state_serialization import to_json_safe
+
 DoDRunMode = Literal["pipeline", "local", "replay", "api"]
 
 
@@ -81,6 +83,12 @@ class DoDRunInput(BaseModel):
             raise ValueError("Value must be a non-empty string.")
         return stripped
 
+    @field_validator("metadata")
+    @classmethod
+    def _normalize_json_metadata(cls, value: dict[str, Any]) -> dict[str, Any]:
+        normalized = to_json_safe(value, context="metadata")
+        return dict(normalized) if isinstance(normalized, dict) else {}
+
 
 class DoDRunOutput(BaseModel):
     """Structured output contract for DoD agent run summaries."""
@@ -116,6 +124,8 @@ def serialize_dod_run_output(
     rule_evaluation_summary = result_dict.get("rule_evaluation_summary")
     if not isinstance(rule_evaluation_summary, dict):
         rule_evaluation_summary = _derive_rule_evaluation_summary(rule_evaluation)
+    if not rule_evaluation_summary:
+        rule_evaluation_summary = _derive_run_summary_rules(result_dict)
 
     build_id = _int_or_default(
         result_dict.get("build_id"),
@@ -211,24 +221,34 @@ def _recommended_status(highest: str | None) -> str:
 
 
 def _safe_result_dict(result: dict[str, Any]) -> dict[str, Any]:
+    """Return compatibility metadata without duplicating top-level output fields."""
+
     allowed = (
-        "run_id",
-        "status",
-        "build_id",
-        "service_now_payload",
-        "confidence",
-        "rule_evaluation",
-        "rule_evaluation_summary",
-        "artifact_paths",
-        "warnings",
-        "errors",
         "schema_version",
         "organization",
         "project",
         "started_at",
         "completed_at",
+        "duration_ms",
+        "phase_durations_ms",
+        "storage_backend",
     )
     return {key: result[key] for key in allowed if key in result}
+
+
+def _derive_run_summary_rules(result: dict[str, Any]) -> dict[str, Any]:
+    derived: dict[str, Any] = {}
+    for source_key, target_key in (
+        ("highest_rule_severity", "highest_severity"),
+        ("rule_recommended_status", "recommended_status"),
+    ):
+        value = result.get(source_key)
+        if value is not None:
+            derived[target_key] = value
+    score = result.get("test_completeness_score")
+    if isinstance(score, dict):
+        derived["test_completeness_score"] = dict(score)
+    return derived
 
 
 def _dict_or_empty(value: Any) -> dict[str, Any]:

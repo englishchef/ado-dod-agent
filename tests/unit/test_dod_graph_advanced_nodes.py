@@ -101,7 +101,7 @@ def test_persist_routing_decisions_node_writes_artifact(
     result = nodes.persist_routing_decisions_node(state)
 
     assert Path(result["artifact_paths"]["routing_decisions"]).exists()
-    assert result["routing_decisions_bundle"]["build_id"] == 5
+    assert "routing_decisions_bundle" not in result
 
 
 def test_generate_llm_outputs_node_appends_retry_decision(monkeypatch: MonkeyPatch) -> None:

@@ -305,10 +305,10 @@ def repair_bucket_3_fields(
     risk = repaired.get("risk_impact_analysis")
     repair_risk = fields_to_repair is None or "risk_impact_analysis" in fields_to_repair
     if repair_risk and isinstance(risk, str) and risk.strip():
-        normalized_risk = _build_risk_impact_analysis(evidence_bundle)
+        normalized_risk = _build_risk_impact_analysis(evidence_bundle, risk)
         if normalized_risk != risk.strip():
             repaired["risk_impact_analysis"] = normalized_risk
-            notes.append("Normalized risk and impact analysis to supported concise statements.")
+            notes.append("Normalized risk and impact analysis to a supported concise paragraph.")
     return repaired, notes
 
 
@@ -507,35 +507,37 @@ def _backout_steps_for_actions(activity_names: list[str], application: str) -> l
     return _dedupe_text(steps)
 
 
-def _build_risk_impact_analysis(evidence_bundle: dict[str, Any]) -> str:
+def _build_risk_impact_analysis(
+    evidence_bundle: dict[str, Any],
+    generated_text: str | None = None,
+) -> str:
     bucket = bucket_3_evidence(evidence_bundle)
     application = _business_readable_application(bucket)
-    likelihood = _likelihood_from_evidence(bucket)
-    planned_impact = _planned_impact_statement(bucket)
-    risk_scope = _risk_scope(bucket)
-    potential = (
-        f"Potential impact: {application} may experience temporary functional degradation "
-        f"in {risk_scope} if the change does not complete successfully."
-    )
-    mitigation: str | None = None
-    uat = _dict_value(bucket.get("uat_deployment"))
-    if uat.get("activities") or bucket.get("rollback_indicators"):
-        mitigation = (
-            "Mitigation: The previous application state can be restored using the "
-            "documented backout steps."
+    likelihood = _supported_likelihood_from_text(generated_text, bucket)
+    planned_impact = _planned_impact_statement(bucket, application)
+    potential = _potential_impact_fragment(generated_text, bucket, application)
+    mitigation = _brief_backout_mitigation(bucket)
+    if likelihood == "Improbable":
+        resiliency_reason = _resiliency_reason(bucket)
+        second_sentence = (
+            "Unplanned impact is considered improbable because "
+            f"{resiliency_reason}; if an unexpected deployment issue occurs, "
+            f"there may be {potential}"
         )
-    parts = [
-        planned_impact,
-        f"Impacted application: {application}.",
-        f"Likelihood of unplanned impact: {likelihood}.",
-        potential,
-    ]
-    if mitigation:
-        parts.append(mitigation)
-    return "\n\n".join(parts)
+        if mitigation:
+            second_sentence += f", and {mitigation}"
+    else:
+        second_sentence = (
+            f"There is a {likelihood.lower()} risk of {potential} if an unexpected "
+            "deployment issue occurs during implementation and requires additional corrective "
+            "action"
+        )
+        if mitigation:
+            second_sentence += f"; {mitigation}"
+    return f"{planned_impact} {second_sentence.rstrip(' .;')}."
 
 
-def _planned_impact_statement(bucket: dict[str, Any]) -> str:
+def _planned_impact_statement(bucket: dict[str, Any], application: str) -> str:
     values = bucket.get("planned_impact_evidence")
     if isinstance(values, list):
         for value in values:
@@ -556,8 +558,174 @@ def _planned_impact_statement(bucket: dict[str, Any]) -> str:
             if positive and not negative:
                 statement = re.sub(r"^\s*Planned impact\s*:\s*", "", value, flags=re.IGNORECASE)
                 statement = _one_concise_sentence(statement)
-                return f"Planned impact: {statement}"
-    return "Planned impact: No planned service outage is identified."
+                if application.casefold() in statement.casefold():
+                    return statement
+                impact_clause = re.search(
+                    r"\b(?:will be unavailable|will experience|will have|"
+                    r"is expected to experience)\b.*",
+                    statement,
+                    re.IGNORECASE,
+                )
+                if impact_clause is not None:
+                    return f"The {application} {_lowercase_first(impact_clause.group(0))}"
+                return (
+                    f"The {application} will experience the documented planned service impact "
+                    "during the scheduled deployment window."
+                )
+    return f"No planned service outage is expected for the {application}."
+
+
+def _supported_likelihood_from_text(
+    generated_text: str | None,
+    bucket: dict[str, Any],
+) -> str:
+    if isinstance(generated_text, str):
+        match = re.search(r"\b(probable|possible|improbable)\b", generated_text, re.IGNORECASE)
+        if match is not None:
+            likelihood = match.group(1).capitalize()
+            if likelihood == "Possible":
+                return likelihood
+            if likelihood == "Improbable" and has_resiliency_evidence(bucket):
+                return likelihood
+            if likelihood == "Probable" and has_high_risk_evidence(bucket):
+                return likelihood
+    return _likelihood_from_evidence(bucket)
+
+
+def _potential_impact_fragment(
+    generated_text: str | None,
+    bucket: dict[str, Any],
+    application: str,
+) -> str:
+    candidate: str | None = None
+    if isinstance(generated_text, str):
+        normalized = re.sub(r"\\n|[\r\n]+", " ", generated_text)
+        labeled = re.search(
+            r"\bPotential impact\s*:\s*(.+?)(?=\s+Mitigation\s*:|$)",
+            normalized,
+            re.IGNORECASE,
+        )
+        natural = re.search(
+            r"\b(?:probable|possible|improbable)?\s*risk\s+of\s+(.+?)"
+            r"(?=\s+if\b|[.;]|$)",
+            normalized,
+            re.IGNORECASE,
+        )
+        user_impact = re.search(
+            r"\b(?:users|customers|members)\s+may\s+experience\s+(.+?)(?=[.;]|$)",
+            normalized,
+            re.IGNORECASE,
+        )
+        match = labeled or natural or user_impact
+        if match is not None:
+            candidate = _clean_risk_clause(match.group(1))
+    if candidate:
+        candidate = re.sub(
+            re.escape(application),
+            "the application",
+            candidate,
+            flags=re.IGNORECASE,
+        )
+        candidate = re.sub(
+            r"^(?:the\s+application|the\s+service|users|customers|members)\s+"
+            r"(?:may\s+)?(?:experience|have)\s+",
+            "",
+            candidate,
+            flags=re.IGNORECASE,
+        )
+        candidate = re.sub(r"\s+if\b.*$", "", candidate, flags=re.IGNORECASE).strip(" ,;.")
+        if _potential_impact_is_supported(candidate, bucket):
+            return _lowercase_first(candidate)
+    risk_scope = _risk_scope(bucket)
+    if risk_scope == "the components updated by this change":
+        return "temporary disruption to the business workflows affected by this change"
+    return f"temporary issues with {risk_scope}"
+
+
+def _potential_impact_is_supported(candidate: str, bucket: dict[str, Any]) -> bool:
+    lowered = candidate.lower()
+    if not candidate or any(
+        claim in lowered
+        for claim in (
+            "data loss",
+            "database corruption",
+            "authentication failure",
+            "enterprise-wide outage",
+            "complete service failure",
+            "production instability",
+        )
+    ):
+        return False
+    if any(pattern.search(candidate) for pattern in _BACKOUT_DELIVERY_METADATA_PATTERNS):
+        return False
+    if lowered in {
+        "temporary disruption",
+        "temporary functional degradation",
+        "temporary functional issues",
+        "temporary issues",
+    }:
+        return True
+    evidence_words = set(normalized_words(bucket_3_claim_evidence_text(bucket)))
+    ignored = {
+        "application",
+        "change",
+        "could",
+        "experience",
+        "impact",
+        "issues",
+        "potential",
+        "risk",
+        "service",
+        "temporary",
+        "users",
+    }
+    candidate_words = {
+        word for word in normalized_words(candidate) if len(word) >= 4 and word not in ignored
+    }
+    return bool(candidate_words & evidence_words)
+
+
+def _brief_backout_mitigation(bucket: dict[str, Any]) -> str | None:
+    uat = _dict_value(bucket.get("uat_deployment"))
+    if uat.get("activities") or bucket.get("rollback_indicators"):
+        return (
+            "the previous application state can be restored using the documented backout steps"
+        )
+    return None
+
+
+def _resiliency_reason(bucket: dict[str, Any]) -> str:
+    resiliency = _dict_value(bucket.get("resiliency_evidence"))
+    alternate_region = resiliency.get("alternate_region")
+    if isinstance(alternate_region, str) and alternate_region.strip():
+        return _lowercase_first(_clean_risk_clause(alternate_region))
+    if resiliency.get("active_active") is True:
+        return "active redundancy keeps traffic on available instances during the change"
+    if resiliency.get("traffic_shift") is True:
+        return "traffic can remain on or shift to an available instance during the change"
+    if resiliency.get("rolling_deployment") is True:
+        return "the rolling deployment keeps unaffected instances available during the change"
+    if resiliency.get("passive_instance_available") is True:
+        return "a passive instance remains available during the change"
+    return "the collected resiliency evidence supports continued service availability"
+
+
+def _clean_risk_clause(value: str) -> str:
+    text = re.sub(
+        r"\b(?:Planned impact|Impacted (?:application|service)|"
+        r"Likelihood of unplanned impact|Potential impact|Mitigation)\s*:\s*",
+        "",
+        value,
+        flags=re.IGNORECASE,
+    )
+    text = re.sub(r"\\n|[\r\n]+", " ", text)
+    text = re.sub(r"^\s*(?:[-*\u2022]|\d+[.)])\s+", "", text)
+    text = re.sub(r"\s+", " ", text).strip(" ,;:.")
+    return " ".join(text.split()[:28])
+
+
+def _lowercase_first(value: str) -> str:
+    return value[:1].lower() + value[1:] if value else value
 
 
 def _business_readable_application(bucket: dict[str, Any]) -> str:

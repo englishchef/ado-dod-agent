@@ -61,10 +61,41 @@ _RATIONALE_RE = re.compile(
 _BACKOUT_STEP_RE = re.compile(r"(?m)^\s*(?:\d+[.)]|[-*])\s+\S+")
 _BACKOUT_DURATION_RE = re.compile(r"(?im)^\s*Estimated backout time\s*:\s*.+$")
 _LIKELIHOOD_RE = re.compile(
-    r"Likelihood of unplanned impact\s*:\s*([A-Za-z]+)",
+    r"\b(probable|possible|improbable)\b",
     re.IGNORECASE,
 )
 _ALLOWED_LIKELIHOODS = {"probable", "possible", "improbable"}
+_RISK_IMPACT_LABEL_RE = re.compile(
+    r"\b(?:Planned impact|Impacted (?:application|service)|"
+    r"Likelihood of unplanned impact|Potential impact|Mitigation)\s*:",
+    re.IGNORECASE,
+)
+_RISK_IMPACT_LIST_RE = re.compile(r"(?m)^\s*(?:[-*\u2022]|\d+[.)])\s+\S+")
+_RISK_IMPACT_BACKOUT_REPETITION_RE = re.compile(
+    r"Estimated backout time\s*:|Stop or pause the production deployment|"
+    r"Redeploy the previously validated|Apply the prior solution state|"
+    r"Validate that the .+? operate normally",
+    re.IGNORECASE,
+)
+_RISK_IMPACT_NEGATIVE_PLANNED_RE = re.compile(
+    r"\b(?:no|without)\s+(?:planned\s+)?(?:service\s+)?"
+    r"(?:outage|downtime|impact|degradation|disruption)\b"
+    r"|\b(?:no\s+)?planned\s+(?:service\s+)?(?:outage|impact)\s+is\s+"
+    r"(?:expected|identified|anticipated)\b",
+    re.IGNORECASE,
+)
+_RISK_IMPACT_POSITIVE_PLANNED_RE = re.compile(
+    r"\bwill be unavailable\b|\bscheduled\s+(?:service\s+)?(?:outage|downtime)\b|"
+    r"\bplanned\s+(?:service\s+)?(?:outage|downtime|impact|degradation|disruption)\b|"
+    r"\bintermittent access\b",
+    re.IGNORECASE,
+)
+_RISK_IMPACT_APPLICATION_ALTERNATIVES_RE = re.compile(
+    r"\b(?:application|service)\b[^.!?]{0,80}\bor\b[^.!?]{0,80}"
+    r"\b(?:application|service)\b|"
+    r"\b(?:application|service)\b[^.!?]{0,80},\s*or\b",
+    re.IGNORECASE,
+)
 _UNSUPPORTED_RISK_CLAIMS = (
     "worst-case scenario",
     "data loss",
@@ -88,12 +119,6 @@ _CONFIRMATION_LANGUAGE_RE = re.compile(
     r"one of the following applications)\b",
     re.IGNORECASE,
 )
-_IMPACTED_APPLICATION_VALUE_RE = re.compile(
-    r"\bImpacted (?:application|service)\s*:\s*([^\n]+)",
-    re.IGNORECASE,
-)
-
-
 def validate_llm_outputs(
     llm_outputs: CombinedLlmOutputs | dict[str, Any],
     evidence_bundle: dict[str, Any] | None = None,
@@ -340,12 +365,59 @@ def validate_bucket_3_fields(
     risk = payload_dict.get("risk_impact_analysis")
     if not isinstance(risk, str) or not risk.strip():
         return issues
-    if len(normalized_words(risk)) > 140:
+    risk_sentences = _risk_impact_sentences(risk)
+    if len(normalized_words(risk)) > 110 or len(risk_sentences) > 2:
         issues.append(
             _issue(
                 "warning",
                 "RISK_IMPACT_TOO_VERBOSE",
-                "Risk and impact analysis should remain within approximately 60-140 words.",
+                "Risk and impact analysis should remain within approximately 40-110 words and "
+                "no more than two sentences.",
+                "risk_impact_analysis",
+                bucket,
+            )
+        )
+    if _RISK_IMPACT_LABEL_RE.search(risk):
+        issues.append(
+            _issue(
+                "warning",
+                "RISK_IMPACT_LABELED_FORMAT",
+                "Risk and impact analysis must use natural sentences without field labels.",
+                "risk_impact_analysis",
+                bucket,
+            )
+        )
+    if "\n" in risk or "\r" in risk or _RISK_IMPACT_LIST_RE.search(risk):
+        issues.append(
+            _issue(
+                "warning",
+                "RISK_IMPACT_LIST_FORMAT",
+                "Risk and impact analysis must be one paragraph without bullets or numbering.",
+                "risk_impact_analysis",
+                bucket,
+            )
+        )
+    if r"\n" in risk:
+        issues.append(
+            _issue(
+                "warning",
+                "RISK_IMPACT_NEWLINE_ESCAPE",
+                "Risk and impact analysis contains a raw newline escape sequence.",
+                "risk_impact_analysis",
+                bucket,
+            )
+        )
+    backout_repetition_markers = _RISK_IMPACT_BACKOUT_REPETITION_RE.findall(risk)
+    if (
+        re.search(r"Estimated backout time\s*:", risk, re.IGNORECASE)
+        or len(_BACKOUT_STEP_RE.findall(risk)) >= 2
+        or len(backout_repetition_markers) >= 2
+    ):
+        issues.append(
+            _issue(
+                "warning",
+                "RISK_IMPACT_BACKOUT_PLAN_REPETITION",
+                "Risk and impact analysis must not repeat the detailed backout plan.",
                 "risk_impact_analysis",
                 bucket,
             )
@@ -369,7 +441,10 @@ def validate_bucket_3_fields(
                 ),
             ]
         )
-    if not re.search(r"\bPlanned impact\s*:\s*\S+", risk, re.IGNORECASE):
+    first_sentence = risk_sentences[0] if risk_sentences else risk
+    negative_planned_impact = _RISK_IMPACT_NEGATIVE_PLANNED_RE.search(first_sentence)
+    positive_planned_impact = _RISK_IMPACT_POSITIVE_PLANNED_RE.search(first_sentence)
+    if negative_planned_impact is None and positive_planned_impact is None:
         issues.append(
             _issue(
                 "warning",
@@ -379,7 +454,21 @@ def validate_bucket_3_fields(
                 bucket,
             )
         )
-    if not re.search(r"\bImpacted (?:application|service)\s*:\s*\S+", risk, re.IGNORECASE):
+    expected_application = _expected_application_display(evidence)
+    expected_application_count = (
+        risk.casefold().count(expected_application.casefold()) if expected_application else 0
+    )
+    has_application_reference = bool(
+        re.search(
+            r"\bfor\s+(?:the\s+)?[^.!?]{1,80}\b(?:application|service)\b|"
+            r"\b(?:application|service)\s+(?:will|may|is|can)\b",
+            risk,
+            re.IGNORECASE,
+        )
+    )
+    if (expected_application and expected_application_count == 0) or (
+        not expected_application and not has_application_reference
+    ):
         issues.append(
             _issue(
                 "warning",
@@ -389,42 +478,35 @@ def validate_bucket_3_fields(
                 bucket,
             )
         )
-    application_match = _IMPACTED_APPLICATION_VALUE_RE.search(risk)
-    if application_match is not None:
-        application_value = application_match.group(1).strip(" .")
-        if re.search(r"\bor\b", application_value, re.IGNORECASE):
-            issues.extend(
-                [
-                    _issue(
-                        "warning",
-                        "IMPACT_APPLICATION_MULTIPLE_ALTERNATIVES",
-                        "Impacted application must not contain alternatives joined by 'or'.",
-                        "risk_impact_analysis",
-                        bucket,
-                    ),
-                    _issue(
-                        "warning",
-                        "IMPACT_APPLICATION_AMBIGUOUS",
-                        "Impacted application must resolve to exactly one candidate.",
-                        "risk_impact_analysis",
-                        bucket,
-                    ),
-                ]
+    if expected_application and expected_application_count == 0:
+        issues.append(
+            _issue(
+                "warning",
+                "IMPACT_APPLICATION_WEAK_EVIDENCE_SELECTED",
+                "Impacted application does not match the strongest deterministic candidate.",
+                "risk_impact_analysis",
+                bucket,
             )
-        expected_application = _expected_application_display(evidence)
-        if expected_application and (
-            normalize_application_candidate(application_value)
-            != normalize_application_candidate(expected_application)
-        ):
-            issues.append(
+        )
+    if expected_application_count > 1 or _RISK_IMPACT_APPLICATION_ALTERNATIVES_RE.search(risk):
+        issues.extend(
+            [
                 _issue(
                     "warning",
-                    "IMPACT_APPLICATION_WEAK_EVIDENCE_SELECTED",
-                    "Impacted application does not match the strongest deterministic candidate.",
+                    "IMPACT_APPLICATION_MULTIPLE_ALTERNATIVES",
+                    "Risk and impact analysis must contain exactly one impacted application.",
                     "risk_impact_analysis",
                     bucket,
-                )
-            )
+                ),
+                _issue(
+                    "warning",
+                    "IMPACT_APPLICATION_AMBIGUOUS",
+                    "Impacted application must resolve to exactly one candidate.",
+                    "risk_impact_analysis",
+                    bucket,
+                ),
+            ]
+        )
     likelihood_match = _LIKELIHOOD_RE.search(risk)
     if likelihood_match is None:
         issues.append(
@@ -481,6 +563,21 @@ def validate_bucket_3_fields(
                 bucket,
             )
         )
+    if not re.search(
+        r"\b(?:risk of|may|could|temporar(?:y|ily)|potential impact|"
+        r"if (?:an )?(?:unexpected|implementation|deployment))\b",
+        risk,
+        re.IGNORECASE,
+    ):
+        issues.append(
+            _issue(
+                "warning",
+                "RISK_IMPACT_MISSING_POTENTIAL_IMPACT",
+                "Risk and impact analysis must describe one realistic potential impact.",
+                "risk_impact_analysis",
+                bucket,
+            )
+        )
     evidence_text = bucket_3_claim_evidence_text(evidence).lower()
     unsupported_claims = [
         claim
@@ -489,25 +586,12 @@ def validate_bucket_3_fields(
     ]
     if _RISK_DELIVERY_METADATA_RE.search(risk):
         unsupported_claims.append("delivery metadata")
-    planned_match = re.search(r"\bPlanned impact\s*:\s*([^\n]+)", risk, re.IGNORECASE)
-    if planned_match is not None:
-        planned_text = planned_match.group(1).lower()
-        negative_planned_impact = re.search(
-            r"\b(?:no|without)\s+(?:planned\s+)?(?:service\s+)?"
-            r"(?:outage|downtime|impact|degradation|disruption)\b",
-            planned_text,
-        )
-        positive_planned_impact = re.search(
-            r"\b(?:outage|downtime|unavailable|degradation|disruption|"
-            r"intermittent access)\b",
-            planned_text,
-        )
-        if (
-            positive_planned_impact
-            and not negative_planned_impact
-            and not has_explicit_planned_impact_evidence(evidence)
-        ):
-            unsupported_claims.append("planned outage or degradation")
+    if (
+        positive_planned_impact
+        and not negative_planned_impact
+        and not has_explicit_planned_impact_evidence(evidence)
+    ):
+        unsupported_claims.append("planned outage or degradation")
     if unsupported_claims:
         unsupported_claims = list(dict.fromkeys(unsupported_claims))
         issues.append(
@@ -522,6 +606,11 @@ def validate_bucket_3_fields(
             )
         )
     return issues
+
+
+def _risk_impact_sentences(value: str) -> list[str]:
+    normalized = re.sub(r"\\n|[\r\n]+", " ", value.strip())
+    return [part.strip() for part in re.split(r"(?<=[.!?])\s+", normalized) if part.strip()]
 
 
 def _backout_derivation_issues(

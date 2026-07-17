@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from typing import Any
 
-PROMPT_VERSION = "1.3"
+PROMPT_VERSION = "1.4"
 NON_ABSOLUTE_RISK_WORDING = "No specific risk signals were detected in the collected evidence"
 
 
@@ -79,14 +79,19 @@ backout_plan field intent:
 - Do not claim rollback was tested or rollback validation completed unless evidence proves it.
 
 risk_impact_analysis field intent:
-- Use short labeled statements for Planned impact, Impacted application, Likelihood of unplanned
-  impact, and Potential impact. Add one brief mitigation or backout sentence only when supported.
-- Keep the field concise, normally approximately 60-140 words. Do not write a long narrative,
-  detailed mitigation section, deployment explanation, or worst-case scenario section.
+- Write risk and impact analysis as one concise, natural paragraph.
+- Do not use headings, labels, bullets, numbering, or a checklist.
+- Integrate planned impact, impacted application, likelihood, potential impact, and mitigation into
+  complete sentences.
+- Keep the field to approximately 40-110 words and no more than two closely connected sentences.
+  Do not write a detailed mitigation section, deployment explanation, or worst-case scenario.
+- Do not output "Planned impact:", "Impacted application:", "Likelihood of unplanned impact:",
+  "Potential impact:", or "Mitigation:".
 - Planned impact must come from explicit evidence. No planned outage or degradation should be
   assumed merely because the change is deployed to production.
 - When evidence does not explicitly identify an outage, degradation, disruption, or downtime, use
-  "Planned impact: No planned service outage is identified."
+  natural wording such as "No planned impact is expected" or "No planned service outage is
+  expected" without a label.
 - Use application_resolution.display_name as the one impacted application. It is deterministically
   ranked from production deployment identity, repository, pipeline, solution or package, work-item,
   change-description, then project evidence. Never return multiple names or alternatives joined by

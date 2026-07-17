@@ -49,10 +49,9 @@ def test_unsupported_improbable_likelihood_flows_into_rule_evaluation() -> None:
     rules = evaluate_risk_rules(
         {
             "risk_impact_analysis": (
-                "Planned impact: No planned service outage is identified.\n\n"
-                "Impacted application: Contact Center ASAC application.\n\n"
-                "Likelihood of unplanned impact: Improbable.\n\n"
-                "Potential impact: Temporary functional degradation is possible."
+                "No planned service outage is expected for the Contact Center ASAC application. "
+                "Unplanned impact is considered improbable; if an unexpected deployment issue "
+                "occurs, there may be temporary functional degradation."
             )
         },
         {"bucket_3": {"resiliency_evidence": {}}},

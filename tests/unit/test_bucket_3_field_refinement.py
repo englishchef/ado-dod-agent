@@ -25,6 +25,7 @@ def _evidence(
     application_candidates: list[str] | None = None,
     repository_name: str | None = "contact-center-asac",
     risk_flags: dict[str, bool] | None = None,
+    risk_signals: list[str] | None = None,
 ) -> dict[str, Any]:
     if activities is None:
         activities = [
@@ -106,7 +107,7 @@ def _evidence(
             },
             "rollback_indicators": ["UAT deployment activities"],
             "risk_flags": risk_flags or {},
-            "risk_signals": [],
+            "risk_signals": risk_signals or [],
         }
     }
 
@@ -125,12 +126,157 @@ def _repair(evidence: dict[str, Any]) -> dict[str, Any]:
 
 
 def _risk_text(likelihood: str) -> str:
+    if likelihood == "Improbable":
+        risk_sentence = (
+            "Unplanned impact is considered improbable; if an unexpected deployment issue "
+            "occurs, there may be temporary functional degradation, and the previous application "
+            "state can be restored using the documented backout steps."
+        )
+    else:
+        risk_sentence = (
+            f"There is a {likelihood.lower()} risk of temporary functional degradation if an "
+            "unexpected deployment issue occurs; the previous application state can be restored "
+            "using the documented backout steps."
+        )
     return (
-        "Planned impact: No planned service outage is identified.\n\n"
-        "Impacted application: Contact Center ASAC application.\n\n"
-        f"Likelihood of unplanned impact: {likelihood}.\n\n"
-        "Potential impact: The application may experience temporary functional degradation."
+        "No planned service outage is expected for the Contact Center ASAC application. "
+        f"{risk_sentence}"
     )
+
+
+def _labeled_risk_text(likelihood: str = "Possible") -> str:
+    return (
+        "Planned impact: No planned service outage is identified.\n"
+        "Impacted application: Contact Center ASAC application.\n"
+        f"Likelihood of unplanned impact: {likelihood}.\n"
+        "Potential impact: Users may experience temporary issues with account-closure processing.\n"
+        "Mitigation: The previous application state can be restored."
+    )
+
+
+def _assert_narrative_risk_format(risk: str) -> None:
+    forbidden = (
+        "Planned impact:",
+        "Impacted application:",
+        "Likelihood of unplanned impact:",
+        "Potential impact:",
+        "Mitigation:",
+    )
+    assert 40 <= len(risk.split()) <= 110
+    assert not any(label in risk for label in forbidden)
+    assert "\n" not in risk
+    assert r"\n" not in risk
+    assert not risk.lstrip().startswith(("1.", "2.", "3.", "4.", "-", "*"))
+
+
+def test_labeled_risk_input_is_repaired_to_one_natural_paragraph() -> None:
+    evidence = _evidence(
+        risk_signals=["Account-closure processing may be temporarily disrupted."]
+    )
+    labeled = _labeled_risk_text()
+
+    issues = validate_bucket_3_fields(
+        {
+            "backout_plan": str(_repair(evidence)["backout_plan"]),
+            "risk_impact_analysis": labeled,
+        },
+        evidence,
+        "bucket_3",
+    )
+    repaired, _ = repair_bucket_3_fields(
+        {"backout_plan": str(_repair(evidence)["backout_plan"]), "risk_impact_analysis": labeled},
+        evidence,
+        fields_to_repair={"risk_impact_analysis"},
+    )
+
+    codes = {issue.code for issue in issues}
+    assert "RISK_IMPACT_LABELED_FORMAT" in codes
+    assert "RISK_IMPACT_LIST_FORMAT" in codes
+    risk = str(repaired["risk_impact_analysis"])
+    _assert_narrative_risk_format(risk)
+    assert "account-closure processing" in risk
+    assert risk.count("Contact Center ASAC application") == 1
+    assert "possible risk" in risk
+
+
+def test_risk_list_and_literal_newline_escape_are_flagged_and_removed() -> None:
+    formatted_as_list = (
+        "1. No planned service outage is expected for the Contact Center ASAC application."
+        r"\n"
+        "2. There is a possible risk of temporary functional degradation."
+    )
+
+    issues = validate_bucket_3_fields(
+        {
+            "backout_plan": str(_repair(_evidence())["backout_plan"]),
+            "risk_impact_analysis": formatted_as_list,
+        },
+        _evidence(),
+        "bucket_3",
+    )
+    repaired, _ = repair_bucket_3_fields(
+        {
+            "backout_plan": str(_repair(_evidence())["backout_plan"]),
+            "risk_impact_analysis": formatted_as_list,
+        },
+        _evidence(),
+        fields_to_repair={"risk_impact_analysis"},
+    )
+
+    codes = {issue.code for issue in issues}
+    assert "RISK_IMPACT_LIST_FORMAT" in codes
+    assert "RISK_IMPACT_NEWLINE_ESCAPE" in codes
+    _assert_narrative_risk_format(str(repaired["risk_impact_analysis"]))
+
+
+def test_formatting_repair_preserves_supported_likelihood_and_selected_application() -> None:
+    evidence = _evidence(high_risk=["Known recurring deployment failures affected this change."])
+
+    repaired, _ = repair_bucket_3_fields(
+        {
+            "backout_plan": str(_repair(evidence)["backout_plan"]),
+            "risk_impact_analysis": _labeled_risk_text("Possible"),
+        },
+        evidence,
+        fields_to_repair={"risk_impact_analysis"},
+    )
+
+    risk = str(repaired["risk_impact_analysis"])
+    assert "possible risk" in risk
+    assert "probable risk" not in risk
+    assert risk.count("Contact Center ASAC application") == 1
+
+
+def test_risk_repair_replaces_repeated_backout_steps_with_brief_mitigation() -> None:
+    repeated_backout = (
+        _labeled_risk_text()
+        + "\n1. Stop or pause the production deployment."
+        + "\n2. Redeploy the previously validated solution."
+        + "\nEstimated backout time: approximately 15 minutes."
+    )
+
+    issues = validate_bucket_3_fields(
+        {
+            "backout_plan": str(_repair(_evidence())["backout_plan"]),
+            "risk_impact_analysis": repeated_backout,
+        },
+        _evidence(),
+        "bucket_3",
+    )
+    repaired, _ = repair_bucket_3_fields(
+        {
+            "backout_plan": str(_repair(_evidence())["backout_plan"]),
+            "risk_impact_analysis": repeated_backout,
+        },
+        _evidence(),
+        fields_to_repair={"risk_impact_analysis"},
+    )
+
+    assert any(issue.code == "RISK_IMPACT_BACKOUT_PLAN_REPETITION" for issue in issues)
+    risk = str(repaired["risk_impact_analysis"])
+    _assert_narrative_risk_format(risk)
+    assert "Estimated backout time" not in risk
+    assert "Stop or pause" not in risk
 
 
 def test_backout_uses_uat_solution_and_configuration_reverse_steps() -> None:
@@ -281,20 +427,35 @@ def test_long_backout_narrative_is_repaired_to_concise_numbered_steps() -> None:
 def test_no_outage_evidence_defaults_to_no_planned_service_outage() -> None:
     risk = str(_repair(_evidence())["risk_impact_analysis"])
 
-    assert "Planned impact: No planned service outage is identified." in risk
+    _assert_narrative_risk_format(risk)
+    assert risk.startswith(
+        "No planned service outage is expected for the Contact Center ASAC application."
+    )
+
+
+def test_risk_without_backout_evidence_remains_within_narrative_length() -> None:
+    evidence = _evidence(activities=[])
+    evidence["bucket_3"]["rollback_indicators"] = []
+
+    risk = str(_repair(evidence)["risk_impact_analysis"])
+
+    _assert_narrative_risk_format(risk)
+    assert "documented backout steps" not in risk
 
 
 def test_explicit_outage_evidence_is_preserved_without_invention() -> None:
     supported = "Contact Center ASAC application will be unavailable for approximately 15 minutes."
     risk = str(_repair(_evidence(planned_impact=[supported]))["risk_impact_analysis"])
 
-    assert f"Planned impact: {supported}" in risk
+    _assert_narrative_risk_format(risk)
+    assert risk.startswith(supported)
     assert "15 minutes" in risk
+    assert "possible risk" in risk
 
 
 def test_unsupported_planned_outage_is_flagged_and_repaired_to_no_identified_outage() -> None:
     unsupported = _risk_text("Possible").replace(
-        "No planned service outage is identified",
+        "No planned service outage is expected for the Contact Center ASAC application",
         "The application will be unavailable for 30 minutes",
     )
     issues = validate_bucket_3_fields(
@@ -314,15 +475,15 @@ def test_unsupported_planned_outage_is_flagged_and_repaired_to_no_identified_out
     )
 
     assert any(issue.code == "RISK_IMPACT_SPECULATIVE" for issue in issues)
-    assert "Planned impact: No planned service outage is identified." in str(
-        repaired["risk_impact_analysis"]
+    assert str(repaired["risk_impact_analysis"]).startswith(
+        "No planned service outage is expected for the Contact Center ASAC application."
     )
 
 
 def test_possible_is_default_without_resiliency_or_high_risk_evidence() -> None:
     risk = str(_repair(_evidence())["risk_impact_analysis"])
 
-    assert "Likelihood of unplanned impact: Possible." in risk
+    assert "There is a possible risk" in risk
 
 
 def test_explicit_rolling_or_secondary_region_evidence_allows_improbable() -> None:
@@ -337,7 +498,8 @@ def test_explicit_rolling_or_secondary_region_evidence_allows_improbable() -> No
         )["risk_impact_analysis"]
     )
 
-    assert "Likelihood of unplanned impact: Improbable." in risk
+    _assert_narrative_risk_format(risk)
+    assert "Unplanned impact is considered improbable" in risk
 
 
 def test_improbable_without_resiliency_is_flagged_and_repaired_to_possible() -> None:
@@ -358,7 +520,7 @@ def test_improbable_without_resiliency_is_flagged_and_repaired_to_possible() -> 
     )
 
     assert any(issue.code == "IMPROBABLE_WITHOUT_RESILIENCY_EVIDENCE" for issue in issues)
-    assert "Likelihood of unplanned impact: Possible." in str(repaired["risk_impact_analysis"])
+    assert "There is a possible risk" in str(repaired["risk_impact_analysis"])
 
 
 def test_probable_without_high_risk_evidence_is_flagged_and_repaired_to_possible() -> None:
@@ -379,7 +541,7 @@ def test_probable_without_high_risk_evidence_is_flagged_and_repaired_to_possible
     )
 
     assert any(issue.code == "PROBABLE_WITHOUT_HIGH_RISK_EVIDENCE" for issue in issues)
-    assert "Likelihood of unplanned impact: Possible." in str(repaired["risk_impact_analysis"])
+    assert "There is a possible risk" in str(repaired["risk_impact_analysis"])
 
 
 def test_explicit_recurring_failure_evidence_allows_probable() -> None:
@@ -391,7 +553,7 @@ def test_explicit_recurring_failure_evidence_allows_probable() -> None:
         )["risk_impact_analysis"]
     )
 
-    assert "Likelihood of unplanned impact: Probable." in risk
+    assert "There is a probable risk" in risk
 
 
 def test_repository_name_becomes_business_readable_application_name() -> None:
@@ -404,7 +566,7 @@ def test_repository_name_becomes_business_readable_application_name() -> None:
         )["risk_impact_analysis"]
     )
 
-    assert "Impacted application: Contact Center ASAC application." in risk
+    assert risk.count("Contact Center ASAC application") == 1
 
 
 def test_ambiguous_application_and_confirmation_language_are_flagged_and_repaired() -> None:
@@ -436,7 +598,7 @@ def test_ambiguous_application_and_confirmation_language_are_flagged_and_repaire
     assert "IMPACT_APPLICATION_AMBIGUOUS" in codes
     assert "IMPACT_APPLICATION_WEAK_EVIDENCE_SELECTED" in codes
     repaired_risk = str(repaired["risk_impact_analysis"])
-    assert "Impacted application: Contact Center ASAC application." in repaired_risk
+    assert repaired_risk.count("Contact Center ASAC application") == 1
     assert "to be confirmed" not in repaired_risk.lower()
     assert "Bill Pay" not in repaired_risk
 

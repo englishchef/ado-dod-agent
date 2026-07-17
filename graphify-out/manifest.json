@@ -160,8 +160,8 @@
     "semantic_hash": ""
   },
   "backend/app/prompts/bucket_3_rollback_risk.py": {
-    "mtime": 1784297509.1517894,
-    "ast_hash": "090caec65c015dc95dcf74d5a1054c37",
+    "mtime": 1784304770.9178126,
+    "ast_hash": "422905863172afee099f9be593806fc9",
     "semantic_hash": ""
   },
   "backend/app/prompts/repair.py": {
@@ -460,13 +460,13 @@
     "semantic_hash": ""
   },
   "backend/app/services/validation/output_repair.py": {
-    "mtime": 1784298338.7638285,
-    "ast_hash": "c0d918529cb32e830c48acc38d87286a",
+    "mtime": 1784305113.9156425,
+    "ast_hash": "3cac6a44e9e678ad2faf91d91bc9b10e",
     "semantic_hash": ""
   },
   "backend/app/services/validation/output_validator.py": {
-    "mtime": 1784298403.129565,
-    "ast_hash": "555d6502ff1708405eacea4d5f0c2f75",
+    "mtime": 1784304773.7209194,
+    "ast_hash": "7fcef3cf10152a2392c72a839febc907",
     "semantic_hash": ""
   },
   "backend/app/services/validation/payload_assembler.py": {
@@ -820,13 +820,13 @@
     "semantic_hash": ""
   },
   "tests/unit/test_bucket_3_field_refinement.py": {
-    "mtime": 1784298469.43393,
-    "ast_hash": "47b361d4d5f60a00b38609bd47a1053f",
+    "mtime": 1784305115.434418,
+    "ast_hash": "2383b6f0dd6aae7bac945fff83201360",
     "semantic_hash": ""
   },
   "tests/unit/test_bucket_prompts.py": {
-    "mtime": 1784297949.0607128,
-    "ast_hash": "cca697a67d7b3267f4b3d90838708b18",
+    "mtime": 1784304675.4014935,
+    "ast_hash": "08de583410108bc2bcc2b2e4ca28d341",
     "semantic_hash": ""
   },
   "tests/unit/test_build_client.py": {
@@ -1155,8 +1155,8 @@
     "semantic_hash": ""
   },
   "tests/unit/test_risk_rules.py": {
-    "mtime": 1784258439.6739576,
-    "ast_hash": "988ca40d6dc333d5b76733e1274ad744",
+    "mtime": 1784304691.4934325,
+    "ast_hash": "cb78f494b7e9a0e0a55e41ab3e1b3252",
     "semantic_hash": ""
   },
   "tests/unit/test_risk_tier_routing.py": {
@@ -1170,8 +1170,8 @@
     "semantic_hash": ""
   },
   "tests/unit/test_rule_engine.py": {
-    "mtime": 1784298032.5473866,
-    "ast_hash": "7f34e67374ce0f31e1b21a7e50eb8b37",
+    "mtime": 1784304692.7586453,
+    "ast_hash": "5d9b810b0b4b06e743bdecb6847b4ac6",
     "semantic_hash": ""
   },
   "tests/unit/test_rule_models.py": {
@@ -1275,7 +1275,7 @@
     "semantic_hash": ""
   },
   "docs/README.md": {
-    "mtime": 1784298031.184116,
+    "mtime": 1784304974.816968,
     "ast_hash": "803bab00f2a0e76fbf9b6432fa5e40a6",
     "semantic_hash": ""
   },

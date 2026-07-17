@@ -19,10 +19,10 @@ def _clean_payload() -> dict[str, str]:
             "Estimated backout time: Not available from the pipeline evidence."
         ),
         "risk_impact_analysis": (
-            "Planned impact: No planned service outage is identified.\n\n"
-            "Impacted application: Contact Center ASAC application.\n\n"
-            "Likelihood of unplanned impact: Possible.\n\n"
-            "Potential impact: The application may experience temporary functional degradation."
+            "No planned service outage is expected for the Contact Center ASAC application. "
+            "There is a possible risk of temporary functional degradation if an unexpected "
+            "deployment issue occurs; the previous application state can be restored using the "
+            "documented backout steps."
         ),
     }
 

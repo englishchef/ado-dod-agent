@@ -177,6 +177,17 @@ def test_bucket_3_prompt_enforces_lower_environment_backout_and_evidence_likelih
     assert "Improbable requires explicit evidence" in prompt
     assert "Probable requires explicit evidence" in prompt
     assert "Do not use numeric percentages" in prompt
+    assert "one concise, natural paragraph" in prompt
+    assert "Do not use headings, labels, bullets, numbering, or a checklist" in prompt
+    assert "approximately 40-110 words" in prompt
+    for forbidden_label in (
+        '"Planned impact:"',
+        '"Impacted application:"',
+        '"Likelihood of unplanned impact:"',
+        '"Potential impact:"',
+        '"Mitigation:"',
+    ):
+        assert forbidden_label in prompt
 
 
 def test_all_prompts_require_json_only_output() -> None:
